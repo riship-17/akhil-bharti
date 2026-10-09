@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api.js";
-import { Banner, Field, Icon, inputClass, primaryButton } from "../components/ui.jsx";
+import { Banner, Field, Icon, inputClass, primaryButton, secondaryButton } from "../components/ui.jsx";
 
 const LABELS = {
   pending: ["Under verification", "ચકાસણી ચાલુ છે", "We have received your registration. The team will confirm it after verifying your payment.", "schedule", "border-amber-200 bg-amber-50 text-amber-800"],
@@ -78,6 +78,12 @@ export default function Status() {
                   <Icon name="lunch_dining" className="text-[22px]" />
                   ભોજન પાસ જુઓ / View Bhojan Pass
                 </Link>
+              )}
+              {result.certificate && result.passToken && (
+                <a href={`/api/certificate/${result.passToken}`} target="_blank" rel="noopener" className={`${secondaryButton} w-full`}>
+                  <Icon name="workspace_premium" className="text-[22px]" />
+                  પ્રમાણપત્ર ડાઉનલોડ કરો / Download Certificate
+                </a>
               )}
               {result.note && (
                 <p className="rounded-r-lg border-l-[3px] border-primary bg-primary-fixed/40 px-3.5 py-3 text-[15px]">

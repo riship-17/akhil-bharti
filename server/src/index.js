@@ -46,5 +46,5 @@ app.use((err, req, res, next) => {
 });
 
 await mongoose.connect(process.env.MONGODB_URI);
-const port = Number(process.env.PORT) || 5000;
+const port = Number(process.env.PORT) || 5050;
 app.listen(port, () => console.log(`API ready on http://localhost:${port}`));

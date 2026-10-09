@@ -69,7 +69,7 @@ export default function Registrations({ call, token }) {
       </div>
 
       {stats && !stats.mailEnabled && (
-        <p className="admin-hint">Email is not set up, so confirmations are not emailed automatically. Use the WhatsApp button on each registration, or add SMTP details to <code>server/.env</code>.</p>
+        <p className="admin-hint">Email is not set up, so confirmations are not emailed automatically. Use the WhatsApp button on each registration, or add <code>RESEND_API_KEY</code> to <code>server/.env</code>.</p>
       )}
 
       <div className="toolbar">

@@ -10,6 +10,8 @@ const SITE = (PUBLIC_URL || "").replace(/\/+$/, "");
 
 export const whatsappEnabled = Boolean(AISENSY_API_KEY && AISENSY_CAMPAIGN_NAME && SITE);
 
+// PUBLIC_URL wins; otherwise the address the request came in on (fine for local testing).
+export const siteUrl = (origin) => SITE || origin || "";
 export const passUrl = (token, origin = SITE) => `${origin}/pass/${token}`;
 const qrImageUrl = (token) => `${SITE}/api/pass/${token}/qr.png`;
 

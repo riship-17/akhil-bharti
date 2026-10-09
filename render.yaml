@@ -1,0 +1,38 @@
+# Render Blueprint: Render → New → Blueprint → pick this repo.
+# Keys marked `sync: false` are asked for when the Blueprint is created (they are secrets, never stored here).
+services:
+  - type: web
+    name: abrsm-conference-2026
+    runtime: node
+    plan: starter # free instances sleep after 15 min idle; use starter (or higher) for the live event
+    region: singapore
+    buildCommand: npm ci --include=dev && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/config
+    envVars:
+      - key: NODE_VERSION
+        value: "22.12.0"
+      - key: MONGODB_URI
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: PUBLIC_URL
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: MAIL_FROM
+        sync: false
+      - key: MAIL_REPLY_TO
+        sync: false
+      - key: RAZORPAY_KEY_ID
+        sync: false
+      - key: RAZORPAY_KEY_SECRET
+        sync: false
+      - key: RAZORPAY_WEBHOOK_SECRET
+        sync: false
+      - key: AISENSY_API_KEY
+        sync: false
+      - key: AISENSY_CAMPAIGN_NAME
+        sync: false

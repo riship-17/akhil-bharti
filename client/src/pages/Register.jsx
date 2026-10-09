@@ -982,8 +982,8 @@ function Success({ result, contacts, whatsappPass }) {
               <Icon name="mail" className="text-[20px]" />
             </div>
             <div>
-              <p className="text-[14px] font-semibold leading-snug text-[#0b5c2f]">કન્ફર્મેશન ઈમેલ {result.email} પર મોકલવામાં આવ્યો છે</p>
-              <p className="mt-0.5 text-[12px] text-on-surface-variant">A confirmation has been sent to your email.</p>
+              <p className="text-[14px] font-semibold leading-snug text-[#0b5c2f]">કન્ફર્મેશન અને ભોજન પાસ {result.email} પર ઈમેલ કરવામાં આવ્યા છે</p>
+              <p className="mt-0.5 text-[12px] text-on-surface-variant">Your confirmation and Bhojan Pass have been emailed to you. Your certificate will be emailed after the conference.</p>
             </div>
           </div>
         )}

@@ -13,7 +13,7 @@ shared/   Form options (districts, designations) and validation used by both
 ```bash
 npm install                          # installs client + server (npm workspaces)
 cp server/.env.example server/.env   # then edit the values
-npm run dev                          # API on :5000, site on http://localhost:5173
+npm run dev                          # API on :5050, site on http://localhost:5173
 ```
 
 Needs MongoDB running locally (`brew services start mongodb-community`) or a MongoDB Atlas connection string in `MONGODB_URI`.
@@ -67,9 +67,30 @@ Setup in AiSensy:
 
 If any of the three settings is empty, nothing is sent, but passes still work through **Check status**. Failed sends are shown in the admin drawer ("Last attempt failed: …").
 
-## Email (optional)
+## Email with Resend (optional)
 
-Set `SMTP_*` in `server/.env`. For Gmail: `SMTP_HOST=smtp.gmail.com`, `SMTP_PORT=465`, your address as `SMTP_USER`, and a Google **App Password** as `SMTP_PASS`. Without SMTP the app works normally — use the WhatsApp button for confirmations.
+Set `RESEND_API_KEY` in `server/.env` (Resend → API Keys). The site then emails:
+
+- **Registration received**: for UPI registrations waiting for a manual check.
+- **Confirmation + Bhojan Pass**: as soon as a registration is confirmed (straight after a Razorpay payment, or when an admin clicks **Verify payment**). The QR code is inside the email, with a link to `/pass/<code>`. Admins can resend it from the registration drawer.
+- **Rejected**: with the admin's note.
+- **Certificate of participation**: after the conference (see below).
+
+**Before going live, verify a sending domain.** In Resend → Domains, add your domain (for example `abrsmgujarat.org`), add the DNS records it shows, and wait until it says *Verified*. Then set `MAIL_FROM="ABRSM Gujarat <noreply@abrsmgujarat.org>"`. Until then, leave `MAIL_FROM` on `onboarding@resend.dev`: Resend only delivers those emails to the address you signed up to Resend with, so they are only useful for testing. A Gmail address cannot be used as `MAIL_FROM`. Set `MAIL_REPLY_TO` if participants should be able to reply to a real inbox.
+
+Also check your Resend plan's daily limit (the free plan allows 100 emails a day) before sending certificates to everyone.
+
+Without `RESEND_API_KEY`, the app works normally; use the WhatsApp button for confirmations.
+
+## Certificates
+
+After the conference, go to **Payment & settings → Certificates**:
+1. Add up to three signatories (name and role), click **Save changes**, then **preview the certificate**.
+2. Click **Send certificates**. Every confirmed participant gets an email with their certificate as a PDF, one every second or so, and the page shows progress. If some fail, or the server restarts, click the button again; it only sends to people who haven't received theirs yet.
+
+Once certificates have been sent, participants can also download theirs from **Check status**. A single certificate can be previewed or emailed again from the registration drawer.
+
+Certificates are drawn on the server with the bundled Noto Serif fonts (`server/assets/fonts`, SIL Open Font License), so names in Gujarati come out correctly. On Linux, the fonts are picked up through `fonts.conf` in that folder. On macOS, local previews use the system fonts instead and look slightly different.
 
 ## Deploy (single service)
 
@@ -77,6 +98,10 @@ Any Node host (Render, Railway, a VPS):
 
 - Build command: `npm install && npm run build`
 - Start command: `npm start`
-- Environment: `MONGODB_URI` (MongoDB Atlas), `ADMIN_PASSWORD`, `JWT_SECRET`, optional `SMTP_*`
+- Environment: `MONGODB_URI` (MongoDB Atlas), `ADMIN_PASSWORD`, `JWT_SECRET`, `PUBLIC_URL`, optional `RESEND_API_KEY` / `MAIL_FROM`, `RAZORPAY_*`, `AISENSY_*`
 
 The Express server serves the built React app and the API from the same URL. Uploaded screenshots are kept in MongoDB, so no persistent disk is needed.
+
+### Frontend on Vercel, API on Render
+
+If the site is served from Vercel (project root directory `client`), `client/vercel.json` forwards `/api/*` to the Render service and sends every other path to the React app. Change the Render address in that file if your service URL is different. Set `PUBLIC_URL` on Render to the Vercel address (e.g. `https://akhil-bharti.vercel.app`) so pass and certificate links point there, and point the Razorpay webhook straight at Render (`https://<service>.onrender.com/api/pay/webhook`).

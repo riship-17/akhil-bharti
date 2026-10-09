@@ -88,6 +88,21 @@ export default function Detail({ reg: r, call, token, onClose, onChanged }) {
     }
   }
 
+  async function postAction(path, kind, done) {
+    setBusy(kind);
+    setMsg("");
+    try {
+      const { registration } = await call(`/admin/registrations/${r._id}/${path}`, { method: "POST" });
+      onChanged(registration);
+      setMsg(done);
+    } catch (err) {
+      setMsg(err.message);
+    } finally {
+      setBusy("");
+    }
+  }
+
+  const certificateUrl = `/api/admin/registrations/${r._id}/certificate?t=${encodeURIComponent(token)}`;
   const receiptUrl = `/api/admin/registrations/${r._id}/receipt?t=${encodeURIComponent(token)}`;
   const isPdf = r.receipt?.contentType === "application/pdf";
   const wa = `https://wa.me/91${r.mobile}?text=${encodeURIComponent(whatsappText({ ...r, adminNote: note }))}`;
@@ -158,6 +173,33 @@ export default function Detail({ reg: r, call, token, onClose, onChanged }) {
                   {busy === "pass" ? "Sending…" : r.pass?.sentAt ? "Send Bhojan Pass again" : "Send Bhojan Pass on WhatsApp"}
                 </button>
                 {r.pass?.token && <> · <a href={`/pass/${r.pass.token}`} target="_blank" rel="noopener">Open pass</a></>}
+              </p>
+            </section>
+          )}
+
+          {r.status === "verified" && (
+            <section className="pay-check">
+              <div className="pay-facts">
+                <div>
+                  <span>Confirmation + Bhojan Pass (email)</span>
+                  <b>{r.confirmationEmailedAt ? `Sent ${when(r.confirmationEmailedAt)}` : "Not sent"}</b>
+                </div>
+                <div>
+                  <span>Certificate (email)</span>
+                  <b>{r.certificate?.emailedAt ? `Sent ${when(r.certificate.emailedAt)}` : "Not sent"}</b>
+                </div>
+              </div>
+              {r.certificate?.lastError && !r.certificate?.emailedAt && <p className="muted small">Last certificate attempt failed: {r.certificate.lastError}</p>}
+              <p className="muted small">
+                <button className="link" onClick={() => postAction("email", "email", "Confirmation email with the Bhojan Pass sent.")} disabled={!!busy}>
+                  {busy === "email" ? "Sending…" : r.confirmationEmailedAt ? "Email pass again" : "Email confirmation + pass"}
+                </button>
+                {" · "}
+                <a href={certificateUrl} target="_blank" rel="noopener">Preview certificate</a>
+                {" · "}
+                <button className="link" onClick={() => postAction("certificate", "certificate", "Certificate emailed.")} disabled={!!busy}>
+                  {busy === "certificate" ? "Sending…" : r.certificate?.emailedAt ? "Email certificate again" : "Email certificate"}
+                </button>
               </p>
             </section>
           )}

@@ -39,6 +39,12 @@ const registrationSchema = new mongoose.Schema(
       lastError: String,
     },
 
+    // Certificate of participation, emailed after the conference.
+    certificate: {
+      emailedAt: Date,
+      lastError: String,
+    },
+
     status: { type: String, enum: STATUSES, default: "pending", index: true },
     adminNote: String,
     reviewedAt: Date,
@@ -84,6 +90,11 @@ const settingsSchema = new mongoose.Schema(
     ifsc: { type: String, default: "" },
     contacts: [{ _id: false, name: String, role: String, phone: String }],
     qr: { fileId: mongoose.Schema.Types.ObjectId, contentType: String },
+    certificate: {
+      signatories: [{ _id: false, name: String, role: String }],
+      // Set when admins first send certificates; from then on participants can also download theirs.
+      releasedAt: Date,
+    },
   },
   { timestamps: true }
 );

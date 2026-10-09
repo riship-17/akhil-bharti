@@ -4,7 +4,8 @@ import { FEE, designationText } from "../../../shared/constants.js";
 import { cleanDetails, cleanUtr, normalizeMobile, validateDetails, validateUtr } from "../../../shared/validate.js";
 import { PaymentOrder, Registration, Settings, nextRegNo } from "../models.js";
 import { deleteFile, saveFile, sendFile, uploader } from "../lib/files.js";
-import { notify } from "../lib/mail.js";
+import { notify, sendConfirmation } from "../lib/mail.js";
+import { certificateFilename, certificatePdf } from "../lib/certificate.js";
 import { newPassToken, passQrPng, sendBhojanPass, whatsappEnabled } from "../lib/whatsapp.js";
 import {
   capturePayment, checkoutSignatureValid, createOrder, getPayment,
@@ -20,6 +21,8 @@ const findActive = (d) =>
 const alreadyRegistered = (r) => ({
   error: `You are already registered (${r.regNo}). Use “Check status” to see whether it has been confirmed.`,
 });
+
+const originOf = (req) => `${req.protocol}://${req.get("host")}`;
 
 function httpError(status, message) {
   const err = new Error(message);
@@ -118,7 +121,7 @@ router.post("/pay/order", registerLimit, async (req, res) => {
 });
 
 // Called from both the browser (after Checkout) and the webhook, so it must be safe to run twice.
-async function completeRazorpay(orderId, paymentId) {
+async function completeRazorpay(orderId, paymentId, origin) {
   const done = await Registration.findOne({ razorpayOrderId: orderId });
   if (done) return done;
 
@@ -159,11 +162,7 @@ async function completeRazorpay(orderId, paymentId) {
   }
 
   if (reg.status === "verified") {
-    const [emailed] = await Promise.all([notify("verified", reg), sendBhojanPass(reg)]);
-    if (emailed) {
-      reg.confirmationEmailedAt = new Date();
-      await reg.save();
-    }
+    await Promise.all([sendConfirmation(reg, origin), sendBhojanPass(reg)]);
   } else {
     notify("received", reg);
   }
@@ -176,7 +175,7 @@ router.post("/pay/verify", registerLimit, async (req, res) => {
   if (typeof orderId !== "string" || typeof paymentId !== "string" || !checkoutSignatureValid(orderId, paymentId, signature)) {
     return res.status(400).json({ error: "Payment could not be verified. If money was deducted, do not pay again — contact the organising team." });
   }
-  const reg = await completeRazorpay(orderId, paymentId);
+  const reg = await completeRazorpay(orderId, paymentId, originOf(req));
   res.status(201).json({
     regNo: reg.regNo,
     fullName: reg.fullName,
@@ -193,7 +192,7 @@ router.post("/pay/webhook", async (req, res) => {
   if (!webhookSignatureValid(req.rawBody, req.get("X-Razorpay-Signature"))) return res.status(400).end();
   const payment = req.body?.payload?.payment?.entity;
   if (["payment.captured", "order.paid"].includes(req.body?.event) && payment?.order_id) {
-    if (await PaymentOrder.exists({ orderId: payment.order_id })) await completeRazorpay(payment.order_id, payment.id);
+    if (await PaymentOrder.exists({ orderId: payment.order_id })) await completeRazorpay(payment.order_id, payment.id, originOf(req));
   }
   res.json({ ok: true });
 });
@@ -205,6 +204,7 @@ router.post("/status", statusLimit, async (req, res) => {
 
   const r = await Registration.findOne({ email, mobile }).sort({ createdAt: -1 });
   if (!r) return res.status(404).json({ error: "No registration found with this email and mobile number." });
+  const settings = await Settings.load();
 
   res.json({
     regNo: r.regNo,
@@ -212,6 +212,7 @@ router.post("/status", statusLimit, async (req, res) => {
     status: r.status,
     note: r.status === "rejected" ? r.adminNote || "" : "",
     passToken: r.status === "verified" ? r.pass?.token : undefined,
+    certificate: Boolean(settings.certificate?.releasedAt && r.status === "verified" && r.pass?.token),
     submittedAt: r.createdAt,
   });
 });
@@ -255,6 +256,20 @@ router.post("/pass/:token/resend", resendLimit, async (req, res) => {
   const result = await sendBhojanPass(r);
   if (!result.sent) return res.status(502).json({ error: result.error });
   res.json({ sent: true, sentAt: r.pass.sentAt });
+});
+
+// ---- Certificate (after the conference, once admins have released certificates) ----
+
+router.get("/certificate/:token", passLimit, async (req, res) => {
+  const [r, settings] = await Promise.all([findByPass(req.params.token), Settings.load()]);
+  if (!r || r.status !== "verified") return res.status(404).json({ error: "Certificate not found." });
+  if (!settings.certificate?.releasedAt) return res.status(404).json({ error: "Certificates will be available after the conference." });
+  res.set({
+    "Content-Type": "application/pdf",
+    "Content-Disposition": `inline; filename="${certificateFilename(r)}"`,
+    "Cache-Control": "private, no-store",
+  });
+  res.send(await certificatePdf(r, settings.certificate.signatories));
 });
 
 export default router;

@@ -6,12 +6,14 @@ import mongoose from "mongoose";
 import { CADRES, FEE, STATUSES, designationText, labelOf } from "../../../shared/constants.js";
 import { Registration, Settings } from "../models.js";
 import { deleteFile, saveFile, sendFile, uploader } from "../lib/files.js";
-import { mailEnabled, notify } from "../lib/mail.js";
+import { mailEnabled, notify, sendCertificate, sendConfirmation } from "../lib/mail.js";
+import { certificateFilename, certificatePdf } from "../lib/certificate.js";
 import { newPassToken, sendBhojanPass, whatsappEnabled } from "../lib/whatsapp.js";
 
 const router = Router();
 const { ADMIN_PASSWORD, JWT_SECRET } = process.env;
 
+const originOf = (req) => `${req.protocol}://${req.get("host")}`;
 const sha = (s) => crypto.createHash("sha256").update(String(s)).digest();
 
 router.post(
@@ -113,12 +115,10 @@ router.patch("/registrations/:id", async (req, res) => {
 
   let emailed = false;
   let whatsapp = null;
-  if (changed && (status === "verified" || status === "rejected")) {
-    [emailed, whatsapp] = await Promise.all([notify(status, r), status === "verified" ? sendBhojanPass(r) : null]);
-    if (emailed && status === "verified") {
-      r.confirmationEmailedAt = new Date();
-      await r.save();
-    }
+  if (changed && status === "verified") {
+    [emailed, whatsapp] = await Promise.all([sendConfirmation(r, originOf(req)), sendBhojanPass(r)]);
+  } else if (changed && status === "rejected") {
+    emailed = await notify("rejected", r);
   }
   res.json({ registration: await Registration.findById(r._id), emailed, whatsapp });
 });
@@ -130,12 +130,106 @@ router.post("/registrations/:id/pass", async (req, res) => {
   res.status(whatsapp.sent ? 200 : 400).json({ registration: await Registration.findById(r._id), whatsapp, error: whatsapp.error });
 });
 
+router.post("/registrations/:id/email", async (req, res) => {
+  const r = await findReg(req, res);
+  if (!r) return;
+  if (r.status !== "verified") return res.status(400).json({ error: "The confirmation email is sent only for confirmed registrations." });
+  if (!mailEnabled) return res.status(400).json({ error: "Email is not set up on the server (RESEND_API_KEY)." });
+  if (!(await sendConfirmation(r, originOf(req)))) return res.status(502).json({ error: "Could not send the email. Check the server log for the reason." });
+  res.json({ registration: await Registration.findById(r._id) });
+});
+
+router.get("/registrations/:id/certificate", async (req, res) => {
+  const r = await findReg(req, res);
+  if (!r) return;
+  const s = await Settings.load();
+  res.set({ "Content-Type": "application/pdf", "Content-Disposition": `inline; filename="${certificateFilename(r)}"` });
+  res.send(await certificatePdf(r, s.certificate?.signatories));
+});
+
+router.post("/registrations/:id/certificate", async (req, res) => {
+  const r = await findReg(req, res);
+  if (!r) return;
+  if (r.status !== "verified") return res.status(400).json({ error: "Certificates are sent only for confirmed registrations." });
+  await ensurePassToken(r);
+  const s = await Settings.load();
+  const result = await sendCertificate(r, { origin: originOf(req), signatories: s.certificate?.signatories });
+  res.status(result.sent ? 200 : 502).json({ registration: await Registration.findById(r._id), error: result.error });
+});
+
 router.delete("/registrations/:id", async (req, res) => {
   const r = await findReg(req, res);
   if (!r) return;
   await deleteFile(r.receipt?.fileId);
   await r.deleteOne();
   res.json({ ok: true });
+});
+
+// ---- Certificates: emailed to every confirmed participant after the conference ----
+
+async function ensurePassToken(r) {
+  // The certificate download link uses the pass token as its secret.
+  if (!r.pass?.token) {
+    r.set("pass.token", newPassToken());
+    await r.save();
+  }
+}
+
+// One bulk send at a time, kept in memory. If the server restarts mid-way, pressing Send again
+// carries on with the people who have not received theirs yet.
+let certificateRun = null;
+
+async function runCertificates(registrations, { origin, signatories }) {
+  for (const r of registrations) {
+    await ensurePassToken(r);
+    const { sent } = await sendCertificate(r, { origin, signatories });
+    certificateRun[sent ? "sent" : "failed"]++;
+    await new Promise((done) => setTimeout(done, 600)); // stay under Resend's rate limit
+  }
+}
+
+async function certificateSummary() {
+  const s = await Settings.load();
+  const [verified, sent, failed] = await Promise.all([
+    Registration.countDocuments({ status: "verified" }),
+    Registration.countDocuments({ status: "verified", "certificate.emailedAt": { $exists: true } }),
+    Registration.countDocuments({ status: "verified", "certificate.emailedAt": { $exists: false }, "certificate.lastError": { $exists: true } }),
+  ]);
+  return { releasedAt: s.certificate?.releasedAt || null, verified, sent, failed, run: certificateRun, mailEnabled };
+}
+
+router.get("/certificates", async (req, res) => res.json(await certificateSummary()));
+
+router.get("/certificates/preview", async (req, res) => {
+  const s = await Settings.load();
+  const sample = (await Registration.findOne({ status: "verified" }).sort({ createdAt: 1 })) || {
+    regNo: "ABRSM26-0000", fullName: "Participant Name", designation: "assistant_professor", institution: "Name of the College, City",
+  };
+  res.set({ "Content-Type": "application/pdf", "Content-Disposition": 'inline; filename="certificate-preview.pdf"' });
+  res.send(await certificatePdf(sample, s.certificate?.signatories));
+});
+
+router.post("/certificates/send", async (req, res) => {
+  if (!mailEnabled) return res.status(400).json({ error: "Email is not set up on the server (RESEND_API_KEY)." });
+  if (certificateRun?.running) return res.json(await certificateSummary());
+
+  const s = await Settings.load();
+  if (!s.certificate?.releasedAt) {
+    s.set("certificate.releasedAt", new Date());
+    await s.save();
+  }
+  const todo = await Registration.find({ status: "verified", "certificate.emailedAt": { $exists: false } }).sort({ createdAt: 1 });
+  certificateRun = { running: true, total: todo.length, sent: 0, failed: 0, startedAt: new Date() };
+  runCertificates(todo, { origin: originOf(req), signatories: s.certificate.signatories })
+    .catch((err) => {
+      console.error("[certificates] bulk send stopped:", err);
+      certificateRun.error = err.message;
+    })
+    .finally(() => {
+      certificateRun.running = false;
+      certificateRun.finishedAt = new Date();
+    });
+  res.json(await certificateSummary());
 });
 
 router.get("/export.csv", async (req, res) => {
@@ -159,6 +253,8 @@ router.get("/export.csv", async (req, res) => {
     ["Payment", (r) => (r.paymentMethod === "razorpay" ? "Razorpay" : "UPI")],
     ["UTR / Payment ID", (r) => r.utr],
     ["Bhojan Pass sent on WhatsApp", (r) => (r.pass?.sentAt ? new Date(r.pass.sentAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }) : "")],
+    ["Confirmation emailed", (r) => (r.confirmationEmailedAt ? new Date(r.confirmationEmailedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }) : "")],
+    ["Certificate emailed", (r) => (r.certificate?.emailedAt ? new Date(r.certificate.emailedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }) : "")],
     ["Admin Note", (r) => r.adminNote],
   ];
   const cell = (v) => {
@@ -186,6 +282,12 @@ router.put("/settings", async (req, res) => {
   const body = req.body || {};
   for (const k of SETTINGS_FIELDS) if (typeof body[k] === "string") s[k] = body[k].trim().slice(0, 200);
   if (typeof body.registrationOpen === "boolean") s.registrationOpen = body.registrationOpen;
+  if (Array.isArray(body.certificate?.signatories)) {
+    s.set("certificate.signatories", body.certificate.signatories
+      .slice(0, 3)
+      .map((x) => ({ name: String(x.name || "").trim().slice(0, 80), role: String(x.role || "").trim().slice(0, 80) }))
+      .filter((x) => x.name));
+  }
   if (Array.isArray(body.contacts)) {
     s.contacts = body.contacts
       .slice(0, 10)

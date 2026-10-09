@@ -1,7 +1,10 @@
 {
   "name": "abrsm-conference-2026",
   "private": true,
-  "workspaces": ["client", "server"],
+  "workspaces": [
+    "client",
+    "server"
+  ],
   "scripts": {
     "dev": "concurrently -k -n api,web -c yellow,cyan \"npm run dev -w server\" \"npm run dev -w client\"",
     "build": "npm run build -w client",
@@ -9,5 +12,8 @@
   },
   "devDependencies": {
     "concurrently": "^9.1.0"
+  },
+  "engines": {
+    "node": ">=22.12"
   }
 }

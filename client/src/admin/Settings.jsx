@@ -129,10 +129,92 @@ export default function Settings({ call, token }) {
         )}
       </section>
 
+      <Certificates s={s} setS={setS} call={call} token={token} />
+
       <div className="save-bar">
         {msg && <span className="admin-msg admin-msg-inline">{msg}</span>}
         <button className="btn" disabled={busy || !dirty}>{busy ? "Saving…" : "Save changes"}</button>
       </div>
     </form>
+  );
+}
+
+function Certificates({ s, setS, call, token }) {
+  const [info, setInfo] = useState(null);
+  const [confirm, setConfirm] = useState(false);
+  const [msg, setMsg] = useState("");
+  const signatories = s.certificate?.signatories || [];
+  const setSignatories = (list) => setS({ ...s, certificate: { ...s.certificate, signatories: list } });
+  const setSign = (i, k) => (e) => setSignatories(signatories.map((x, j) => (j === i ? { ...x, [k]: e.target.value } : x)));
+
+  useEffect(() => {
+    let timer;
+    const load = () =>
+      call("/admin/certificates")
+        .then((d) => {
+          setInfo(d);
+          if (d.run?.running) timer = setTimeout(load, 3000);
+        })
+        .catch((e) => setMsg(e.message));
+    load();
+    return () => clearTimeout(timer);
+  }, [call, info?.run?.startedAt]);
+
+  async function sendAll() {
+    setConfirm(false);
+    setMsg("");
+    try {
+      setInfo(await call("/admin/certificates/send", { method: "POST" }));
+    } catch (err) {
+      setMsg(err.message);
+    }
+  }
+
+  const run = info?.run;
+  const remaining = info ? info.verified - info.sent : 0;
+
+  return (
+    <section className="panel">
+      <h2>Certificates</h2>
+      <p className="muted small">
+        After the conference, email a certificate of participation (PDF) to every confirmed participant. Once sent, participants can
+        also download theirs from the <i>Check status</i> page.
+      </p>
+
+      <label className="field-label"><span className="field-en">Signatories printed on the certificate (up to 3)</span></label>
+      {signatories.map((x, i) => (
+        <div className="contact-row" key={i}>
+          <input placeholder="Name (e.g. Dr. A. B. Shah)" value={x.name} onChange={setSign(i, "name")} />
+          <input placeholder="Role (e.g. President)" value={x.role} onChange={setSign(i, "role")} />
+          <button type="button" className="link danger" onClick={() => setSignatories(signatories.filter((_, j) => j !== i))}>Remove</button>
+        </div>
+      ))}
+      {signatories.length < 3 && (
+        <button type="button" className="link" onClick={() => setSignatories([...signatories, { name: "", role: "" }])}>+ Add signatory</button>
+      )}
+      <p className="muted small">
+        Save changes first, then{" "}
+        <a href={`/api/admin/certificates/preview?t=${encodeURIComponent(token)}`} target="_blank" rel="noopener">preview the certificate</a>.
+      </p>
+
+      {info && (
+        <div className="panel-row">
+          <div>
+            <p><b>{info.sent}</b> of <b>{info.verified}</b> confirmed participants have been emailed their certificate.{info.failed > 0 && <> <b>{info.failed}</b> failed — send again to retry them.</>}</p>
+            {run?.running && <p className="muted small">Sending… {run.sent + run.failed} of {run.total} done. You can leave this page; it keeps going.</p>}
+            {run && !run.running && run.total > 0 && <p className="muted small">Last run: {run.sent} sent, {run.failed} failed.{run.error && ` Stopped: ${run.error}`}</p>}
+            {!info.mailEnabled && <p className="muted small">Email is not set up on the server (RESEND_API_KEY).</p>}
+          </div>
+          {confirm ? (
+            <button type="button" className="btn green" onClick={sendAll}>Yes, email {remaining} certificate{remaining === 1 ? "" : "s"}</button>
+          ) : (
+            <button type="button" className="btn" disabled={!info.mailEnabled || run?.running || remaining === 0} onClick={() => setConfirm(true)}>
+              {run?.running ? "Sending…" : remaining === 0 ? "All sent" : info.sent ? `Send to remaining ${remaining}` : "Send certificates"}
+            </button>
+          )}
+        </div>
+      )}
+      {msg && <p className="admin-msg">{msg}</p>}
+    </section>
   );
 }
