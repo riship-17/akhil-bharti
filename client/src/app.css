@@ -1,0 +1,80 @@
+/* Public site uses Tailwind (inside .tw). The admin panel still uses styles.css,
+   kept in a lower layer so Tailwind utilities always win over it. */
+@layer theme, legacy, base, components, utilities;
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+@import "./styles.css" layer(legacy);
+
+@theme {
+  --font-sans: "Inter", "Noto Sans Gujarati", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  --color-primary: #a43700;
+  --color-on-primary: #ffffff;
+  --color-primary-container: #ce4700;
+  --color-on-primary-container: #fffbff;
+  --color-primary-fixed: #ffdbcf;
+  --color-on-primary-fixed: #380d00;
+  --color-on-primary-fixed-variant: #812900;
+  --color-secondary: #a23f1c;
+  --color-secondary-fixed: #ffdbd0;
+  --color-tertiary: #006a34;
+  --color-tertiary-container: #208548;
+  --color-tertiary-fixed: #96f7ad;
+  --color-error: #ba1a1a;
+  --color-error-container: #ffdad6;
+  --color-surface: #fcf9f8;
+  --color-surface-variant: #e5e2e1;
+  --color-surface-container-lowest: #ffffff;
+  --color-surface-container-low: #f6f3f2;
+  --color-surface-container: #f0eded;
+  --color-surface-container-high: #eae7e7;
+  --color-surface-container-highest: #e5e2e1;
+  --color-on-surface: #1c1b1b;
+  --color-on-surface-variant: #5a4138;
+  --color-outline: #8e7167;
+  --color-outline-variant: #e2bfb3;
+}
+
+/* Tailwind's preflight, scoped to the public site so the admin panel is untouched. */
+@layer base {
+  .tw {
+    font-family: var(--font-sans);
+    color: var(--color-on-surface);
+    background-color: var(--color-surface);
+    font-size: 16px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  .tw *, .tw ::before, .tw ::after { box-sizing: border-box; margin: 0; padding: 0; border: 0 solid; }
+  .tw :where(h1, h2, h3, h4, h5, h6) { font-size: inherit; font-weight: inherit; }
+  .tw :where(a) { color: inherit; text-decoration: inherit; }
+  .tw :where(ol, ul, menu) { list-style: none; }
+  .tw :where(img, video, iframe) { display: block; max-width: 100%; }
+  .tw :where(button, input, select, textarea) {
+    font: inherit; color: inherit; background-color: transparent; border-radius: 0;
+    width: auto; min-height: 0; box-shadow: none; transition: none;
+  }
+  .tw :where(input, select, textarea):focus { outline: none; }
+  .tw :where(button) { cursor: pointer; }
+  .tw :where(button:disabled) { cursor: not-allowed; }
+  .tw :where(input, textarea)::placeholder { color: var(--color-on-surface-variant); opacity: 0.6; }
+  .tw :where(textarea) { resize: vertical; }
+  .tw :where(table) { border-collapse: collapse; }
+  .tw [hidden] { display: none !important; }
+}
+
+.material-symbols-outlined {
+  font-family: "Material Symbols Outlined";
+  font-weight: normal;
+  font-style: normal;
+  line-height: 1;
+  letter-spacing: normal;
+  text-transform: none;
+  display: inline-block;
+  white-space: nowrap;
+  direction: ltr;
+  -webkit-font-smoothing: antialiased;
+  font-feature-settings: "liga";
+  user-select: none;
+}

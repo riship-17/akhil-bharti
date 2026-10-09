@@ -61,7 +61,7 @@ code { font-family: var(--mono); font-size: .85em; background: var(--accent-soft
 }
 .btn:hover { background: var(--accent-ink); border-color: var(--accent-ink); }
 .btn:disabled { opacity: .55; cursor: not-allowed; }
-.btn.block { display: flex; width: 100%; margin-top: 20px; }
+.btn.btn-block { display: flex; width: 100%; margin-top: 20px; }
 .btn.small { font-size: 14.5px; padding: 7px 14px; }
 .btn.ghost { background: transparent; color: var(--accent); }
 .btn.ghost:hover { background: var(--accent-soft); }
@@ -135,6 +135,9 @@ input::placeholder, textarea::placeholder { color: #a39a92; }
 /* payment */
 .pay-panel { display: grid; grid-template-columns: 260px 1fr; gap: 32px; align-items: start; margin-bottom: 32px; padding-bottom: 32px; border-bottom: 1px solid var(--line); }
 .pay-panel.skeleton { min-height: 300px; }
+.pay-online { margin-bottom: 32px; padding: 22px; background: var(--card); border: 1px solid var(--line); }
+.pay-online p:not(.amount) { margin: 14px 0 0; }
+.pay-online .muted { margin-top: 4px; font-size: 14.5px; }
 .qr-box { background: var(--card); border: 1px solid var(--line); padding: 18px; text-align: center; }
 .qr-box img { display: block; width: 100%; aspect-ratio: 1; object-fit: contain; }
 .qr-empty { aspect-ratio: 1; border: 1.5px dashed var(--line-strong); display: grid; place-items: center; color: var(--muted); font-size: 14px; padding: 20px; }
@@ -218,12 +221,12 @@ input::placeholder, textarea::placeholder { color: #a39a92; }
 .filters select { width: auto; padding: 7px 11px; font-size: 14.5px; }
 
 .table-wrap { background: var(--card); border: 1px solid var(--line); overflow-x: auto; }
-.grid { width: 100%; border-collapse: collapse; font-size: 14.5px; }
-.grid th { text-align: left; font-size: 12.5px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); padding: 10px 14px; border-bottom: 1px solid var(--line); background: #fcfaf7; white-space: nowrap; }
-.grid td { padding: 10px 14px; border-bottom: 1px solid #f0ebe4; vertical-align: top; }
-.grid tbody tr { cursor: pointer; }
-.grid tbody tr:hover, .grid tbody tr.sel { background: #fdf6f0; }
-.grid tbody tr:focus { outline: 2px solid var(--accent); outline-offset: -2px; }
+.reg-table { width: 100%; border-collapse: collapse; font-size: 14.5px; }
+.reg-table th { text-align: left; font-size: 12.5px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); padding: 10px 14px; border-bottom: 1px solid var(--line); background: #fcfaf7; white-space: nowrap; }
+.reg-table td { padding: 10px 14px; border-bottom: 1px solid #f0ebe4; vertical-align: top; }
+.reg-table tbody tr { cursor: pointer; }
+.reg-table tbody tr:hover, .reg-table tbody tr.sel { background: #fdf6f0; }
+.reg-table tbody tr:focus { outline: 2px solid var(--accent); outline-offset: -2px; }
 .sub-line { display: block; color: var(--muted); font-size: 13px; max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .empty { text-align: center; color: var(--muted); padding: 40px 16px; margin: 0; }
 .pager { display: flex; align-items: center; justify-content: center; gap: 16px; margin-top: 16px; color: var(--muted); font-size: 14px; }
@@ -255,7 +258,7 @@ input::placeholder, textarea::placeholder { color: #a39a92; }
 .kv dt { color: var(--muted); font-size: 14px; }
 .kv dd { margin: 0; white-space: pre-line; word-break: break-word; }
 .admin-msg { background: var(--green-soft); color: var(--green); padding: 10px 12px; font-size: 14.5px; margin: 14px 0 0; }
-.admin-msg.inline { margin: 0; padding: 6px 10px; }
+.admin-msg.admin-msg-inline { margin: 0; padding: 6px 10px; }
 
 .login-page { min-height: 100vh; display: grid; place-items: center; padding: 20px; background: var(--paper); }
 .login { width: 100%; max-width: 360px; background: var(--card); border: 1px solid var(--line); border-top: 4px solid var(--accent); padding: 32px 28px; }

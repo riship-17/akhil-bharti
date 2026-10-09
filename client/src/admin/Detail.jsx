@@ -35,9 +35,12 @@ export default function Detail({ reg: r, call, token, onClose, onChanged }) {
     setBusy(status);
     setMsg("");
     try {
-      const { registration, emailed } = await call(`/admin/registrations/${r._id}`, { method: "PATCH", body: { status, adminNote: note } });
+      const { registration, emailed, whatsapp } = await call(`/admin/registrations/${r._id}`, { method: "PATCH", body: { status, adminNote: note } });
       onChanged(registration);
-      if (status === "verified") setMsg(emailed ? "Verified. Confirmation email sent — you can also send it on WhatsApp." : "Verified. Now send the confirmation on WhatsApp.");
+      if (status === "verified") {
+        const pass = whatsapp?.sent ? " Bhojan Pass sent on WhatsApp." : whatsapp?.error ? ` Bhojan Pass not sent: ${whatsapp.error}` : "";
+        setMsg((emailed ? "Verified. Confirmation email sent." : "Verified.") + pass);
+      }
       else if (status === "rejected") setMsg(emailed ? "Rejected and the participant was emailed." : "Rejected. Let the participant know on WhatsApp.");
       else setMsg("Moved back to pending.");
     } catch (err) {
@@ -67,6 +70,20 @@ export default function Detail({ reg: r, call, token, onClose, onChanged }) {
       onChanged(r, true);
     } catch (err) {
       setMsg(err.message);
+      setBusy("");
+    }
+  }
+
+  async function sendPass() {
+    setBusy("pass");
+    setMsg("");
+    try {
+      const { registration } = await call(`/admin/registrations/${r._id}/pass`, { method: "POST" });
+      onChanged(registration);
+      setMsg("Bhojan Pass sent on WhatsApp.");
+    } catch (err) {
+      setMsg(err.message);
+    } finally {
       setBusy("");
     }
   }
@@ -103,16 +120,47 @@ export default function Detail({ reg: r, call, token, onClose, onChanged }) {
         </div>
 
         <div className="drawer-body">
-          <section className="pay-check">
-            <div className="pay-facts">
-              <div><span>Amount</span><b>₹{r.amount}</b></div>
-              <div><span>UTR / Transaction ID</span><b className="mono">{r.utr}</b></div>
-            </div>
-            <a href={receiptUrl} target="_blank" rel="noopener" className="receipt">
-              {isPdf ? <div className="file-icon big">PDF<small>Open receipt</small></div> : <img src={receiptUrl} alt="Payment screenshot" />}
-            </a>
-            <p className="muted small">Match the UTR and amount with your bank / UPI statement before verifying. Click the receipt to open it full size.</p>
-          </section>
+          {r.paymentMethod === "razorpay" ? (
+            <section className="pay-check">
+              <div className="pay-facts">
+                <div><span>Amount</span><b>₹{r.amount}</b></div>
+                <div><span>Razorpay payment ID</span><b className="mono">{r.utr}</b></div>
+              </div>
+              <p className="muted small">
+                Paid online through Razorpay and checked automatically.{" "}
+                <a href={`https://dashboard.razorpay.com/app/payments/${r.utr}`} target="_blank" rel="noopener">Open in Razorpay dashboard</a>
+              </p>
+            </section>
+          ) : (
+            <section className="pay-check">
+              <div className="pay-facts">
+                <div><span>Amount</span><b>₹{r.amount}</b></div>
+                <div><span>UTR / Transaction ID</span><b className="mono">{r.utr}</b></div>
+              </div>
+              <a href={receiptUrl} target="_blank" rel="noopener" className="receipt">
+                {isPdf ? <div className="file-icon big">PDF<small>Open receipt</small></div> : <img src={receiptUrl} alt="Payment screenshot" />}
+              </a>
+              <p className="muted small">Match the UTR and amount with your bank / UPI statement before verifying. Click the receipt to open it full size.</p>
+            </section>
+          )}
+
+          {r.status === "verified" && (
+            <section className="pay-check">
+              <div className="pay-facts">
+                <div>
+                  <span>Bhojan Pass (WhatsApp)</span>
+                  <b>{r.pass?.sentAt ? `Sent ${when(r.pass.sentAt)}` : "Not sent yet"}</b>
+                </div>
+              </div>
+              {r.pass?.lastError && <p className="muted small">Last attempt failed: {r.pass.lastError}</p>}
+              <p className="muted small">
+                <button className="link" onClick={sendPass} disabled={!!busy}>
+                  {busy === "pass" ? "Sending…" : r.pass?.sentAt ? "Send Bhojan Pass again" : "Send Bhojan Pass on WhatsApp"}
+                </button>
+                {r.pass?.token && <> · <a href={`/pass/${r.pass.token}`} target="_blank" rel="noopener">Open pass</a></>}
+              </p>
+            </section>
+          )}
 
           <dl className="kv">
             {rows.filter(([, v]) => v).map(([k, v]) => (

@@ -130,7 +130,7 @@ export default function Settings({ call, token }) {
       </section>
 
       <div className="save-bar">
-        {msg && <span className="admin-msg inline">{msg}</span>}
+        {msg && <span className="admin-msg admin-msg-inline">{msg}</span>}
         <button className="btn" disabled={busy || !dirty}>{busy ? "Saving…" : "Save changes"}</button>
       </div>
     </form>

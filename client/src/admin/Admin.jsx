@@ -80,7 +80,7 @@ function Login({ onLogin }) {
         <label className="field-label" htmlFor="pw"><span className="field-en">Password</span></label>
         <input id="pw" type="password" autoComplete="current-password" autoFocus value={password} onChange={(e) => setPassword(e.target.value)} />
         {error && <p className="field-error">{error}</p>}
-        <button className="btn block" disabled={busy || !password}>{busy ? "Signing in…" : "Sign in"}</button>
+        <button className="btn btn-block" disabled={busy || !password}>{busy ? "Signing in…" : "Sign in"}</button>
       </form>
     </div>
   );

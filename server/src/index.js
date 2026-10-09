@@ -24,7 +24,8 @@ app.use((req, res, next) => {
   res.set({ "X-Content-Type-Options": "nosniff", "Referrer-Policy": "same-origin" });
   next();
 });
-app.use(express.json({ limit: "100kb" }));
+// rawBody is kept for checking Razorpay webhook signatures.
+app.use(express.json({ limit: "100kb", verify: (req, res, buf) => { req.rawBody = buf; } }));
 
 app.use("/api/admin", adminRoutes);
 app.use("/api", publicRoutes);

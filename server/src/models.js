@@ -1,5 +1,5 @@
 import mongoose from "mongoose";
-import { CADRES, DESIGNATIONS, DISTRICTS, FEE, STATUSES } from "../../shared/constants.js";
+import { CADRES, DESIGNATIONS, DISTRICTS, FEE, PAYMENT_METHODS, STATUSES } from "../../shared/constants.js";
 
 const values = (list) => list.map((x) => x.value);
 
@@ -20,12 +20,23 @@ const registrationSchema = new mongoose.Schema(
     altContact: String,
 
     amount: { type: Number, default: FEE },
+    paymentMethod: { type: String, enum: PAYMENT_METHODS, default: "upi" },
+    // UPI: the UTR typed by the participant. Razorpay: the payment ID (pay_…).
     utr: { type: String, required: true, unique: true },
+    razorpayOrderId: { type: String, unique: true, sparse: true },
     receipt: {
-      fileId: { type: mongoose.Schema.Types.ObjectId, required: true },
+      fileId: { type: mongoose.Schema.Types.ObjectId, required: function () { return this.paymentMethod === "upi"; } },
       filename: String,
       contentType: String,
       size: Number,
+    },
+
+    // Bhojan Pass: the token is the secret part of the pass link / QR code.
+    pass: {
+      token: { type: String, unique: true, sparse: true },
+      sentAt: Date,
+      sendCount: { type: Number, default: 0 },
+      lastError: String,
     },
 
     status: { type: String, enum: STATUSES, default: "pending", index: true },
@@ -37,6 +48,19 @@ const registrationSchema = new mongoose.Schema(
 );
 
 export const Registration = mongoose.model("Registration", registrationSchema);
+
+// Participant details held between creating a Razorpay order and the payment succeeding.
+export const PaymentOrder = mongoose.model(
+  "PaymentOrder",
+  new mongoose.Schema(
+    {
+      orderId: { type: String, required: true, unique: true },
+      details: { type: Object, required: true },
+      createdAt: { type: Date, default: Date.now, expires: 7 * 24 * 3600 },
+    },
+    { versionKey: false }
+  )
+);
 
 const Counter = mongoose.model(
   "Counter",

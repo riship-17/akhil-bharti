@@ -41,6 +41,8 @@ export const DISTRICTS = [
 
 export const STATUSES = ["pending", "verified", "rejected"];
 
+export const PAYMENT_METHODS = ["upi", "razorpay"];
+
 export const labelOf = (list, value) => list.find((x) => x.value === value)?.en ?? value ?? "";
 
 export const designationText = (r) =>

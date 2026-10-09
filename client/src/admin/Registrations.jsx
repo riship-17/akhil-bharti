@@ -94,7 +94,7 @@ export default function Registrations({ call, token }) {
       {error && <div className="banner">{error}</div>}
 
       <div className="table-wrap">
-        <table className="grid">
+        <table className="reg-table">
           <thead>
             <tr>
               <th>Reg no.</th>

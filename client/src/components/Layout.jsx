@@ -1,115 +1,121 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
 import { useConfig } from "../config.js";
-import { SITE } from "../site.js";
+import { EVENT } from "../../../shared/constants.js";
+import { Icon, Seal, telHref } from "./ui.jsx";
 
 const NAV = [
-  ["/#about", "About"],
-  ["/#registration", "How to register"],
-  ["/#venue", "Venue"],
-  ["/#faq", "FAQ"],
+  ["/", "પરિષદ પરિચય / Overview"],
+  ["/register", "પ્રતિનિધિ નોંધણી / Registration"],
+  ["/#venue", "સ્થળ / Venue"],
+  ["/#faq", "પ્રશ્નો / FAQ"],
+  ["/status", "નોંધણી સ્થિતિ / Check Status"],
 ];
+
+const navClass = (active) =>
+  `whitespace-nowrap border-b-2 py-1 text-[15px] transition-colors ${
+    active ? "border-primary font-bold text-primary" : "border-transparent text-on-surface-variant hover:text-on-surface"
+  }`;
 
 export default function Layout() {
   const { pathname, hash } = useLocation();
-  const [menuOpen, setMenuOpen] = useState(false);
-  const hasContacts = useConfig()?.contacts?.length > 0;
+  const contacts = useConfig()?.contacts || [];
+  const helpline = contacts[0];
 
   useEffect(() => {
-    setMenuOpen(false);
     if (!hash) { window.scrollTo(0, 0); return; }
     // wait a frame so the target section has rendered
     requestAnimationFrame(() => document.getElementById(hash.slice(1))?.scrollIntoView());
   }, [pathname, hash]);
 
   return (
-    <div className="site">
-      <div className="topstrip">
-        <div className="container">
-          <span>{SITE.org}, Gujarat <span className="hide-sm">· {SITE.wing}</span></span>
-          <span className="hide-sm">{SITE.title} · {SITE.date}</span>
+    <div className="tw flex min-h-screen flex-col">
+      <header className="z-40 bg-surface/95 shadow-[0_2px_8px_rgba(0,0,0,0.06)] backdrop-blur-xl md:sticky md:top-0 print:hidden">
+        <div className="h-1.5 w-full bg-gradient-to-r from-primary via-secondary to-primary-container" />
+        <div className="flex h-1 w-full items-center justify-around overflow-hidden bg-surface-variant opacity-40" aria-hidden="true">
+          {[0, 1, 2, 3, 4, 5].map((i) => <div key={i} className={`h-2 w-2 rotate-45 ${i % 2 ? "bg-secondary" : "bg-primary"}`} />)}
         </div>
-      </div>
 
-      <header className="header">
-        <div className="container header-row">
-          <Link to="/" className="logo">
-            <Seal />
-            <span>
-              <b>{SITE.orgShort}</b>
-              <small>{SITE.wing} · State Conference 2026</small>
+        <div className="mx-auto flex h-20 max-w-7xl items-center justify-between gap-4 px-4 md:h-24 lg:px-10">
+          <Link to="/" className="flex min-w-0 items-center gap-3">
+            <Seal className="h-11 w-11 shrink-0 md:h-12 md:w-12" />
+            <span className="flex min-w-0 flex-col justify-center">
+              <span className="text-[15px] font-semibold leading-tight text-primary md:text-base">અખિલ ભારતીય રાષ્ટ્રીય શૈક્ષિક મહાસંઘ, ગુજરાત</span>
+              <span className="text-xs leading-tight tracking-tight text-on-surface-variant md:text-sm">Akhil Bharatiya Rashtriya Shaikshik Mahasangh, Gujarat</span>
             </span>
           </Link>
 
-          <button
-            className="menu-toggle"
-            aria-expanded={menuOpen}
-            aria-controls="site-menu"
-            onClick={() => setMenuOpen((v) => !v)}
-          >
-            {menuOpen ? "Close" : "Menu"}
-          </button>
+          <div className="flex shrink-0 items-center gap-4">
+            {helpline && (
+              <div className="hidden flex-col items-end text-right text-xs text-on-surface-variant xl:flex">
+                <span className="font-medium text-primary">હેલ્પલાઇન / Helpline: <a href={telHref(helpline.phone)}>{helpline.phone}</a></span>
+                <span>{helpline.name}{helpline.role ? ` · ${helpline.role}` : ""}</span>
+              </div>
+            )}
+            <Link to="/register" className="hidden h-10 items-center gap-1.5 rounded-full bg-primary px-4 text-sm font-semibold text-on-primary shadow-sm transition-colors hover:bg-secondary sm:inline-flex">
+              નોંધણી / Register
+              <Icon name="arrow_forward" className="text-[18px]" />
+            </Link>
+          </div>
+        </div>
 
-          <nav id="site-menu" className={`menu${menuOpen ? " open" : ""}`} aria-label="Main">
-            {NAV.map(([to, label]) => <Link key={to} to={to}>{label}</Link>)}
-            {hasContacts && <Link to="/#contact">Contact</Link>}
-            <NavLink to="/register" className="button small">Register</NavLink>
+        <div className="bg-surface-container-lowest shadow-inner">
+          <nav className="mx-auto flex max-w-7xl items-center gap-6 overflow-x-auto px-4 py-2 [scrollbar-width:none] lg:px-10" aria-label="Main">
+            {NAV.map(([to, label]) =>
+              to.includes("#") ? (
+                <Link key={to} to={to} className={navClass(false)}>{label}</Link>
+              ) : (
+                <NavLink key={to} to={to} end className={({ isActive }) => navClass(isActive && !hash)}>{label}</NavLink>
+              )
+            )}
           </nav>
         </div>
       </header>
 
-      <main>
+      <main className="w-full flex-1">
         <Outlet />
       </main>
 
-      <footer className="footer">
-        <div className="container">
-          <div className="footer-grid">
-            <div>
-              <div className="footer-org">
-                <Seal />
-                <p>{SITE.org}, Gujarat<br />{SITE.wing}</p>
-              </div>
-              <p className="footer-gu" lang="gu">{SITE.orgGu} (ઉચ્ચ શિક્ષણ)</p>
-            </div>
-            <div>
-              <h4>Conference</h4>
-              <ul>
-                <li>{SITE.date}</li>
-                <li>{SITE.venue}</li>
-                <li>Ahmedabad, Gujarat</li>
-              </ul>
-            </div>
-            <div>
-              <h4>Links</h4>
-              <ul>
-                <li><Link to="/register">Registration form</Link></li>
-                <li><Link to="/#registration">How to register</Link></li>
-                <li><Link to="/#venue">Venue &amp; directions</Link></li>
-                <li><Link to="/#faq">Frequently asked questions</Link></li>
-              </ul>
+      <footer className="mt-10 w-full bg-surface-container-low print:hidden">
+        <div className="mx-auto grid max-w-7xl grid-cols-1 gap-8 px-4 py-10 md:grid-cols-3 lg:px-10">
+          <div className="space-y-1.5">
+            <p className="font-semibold text-primary">અખિલ ભારતીય રાષ્ટ્રીય શૈક્ષિક મહાસંઘ, ગુજરાત</p>
+            <p className="text-[15px] text-on-surface-variant">{EVENT.titleGu} / {EVENT.titleEn} · ઉચ્ચ શિક્ષણ</p>
+            <p className="text-sm text-on-surface-variant">{EVENT.motto}</p>
+          </div>
+
+          <div className="space-y-1.5">
+            <p className="font-semibold text-on-surface">સંપર્ક અને સહાય / Contact &amp; Helpdesk</p>
+            {contacts.length > 0 ? (
+              contacts.map((p) => (
+                <p key={p.name + p.phone} className="text-sm text-on-surface-variant">
+                  {p.name}{p.role && ` · ${p.role}`}:{" "}
+                  <a className="font-medium text-primary hover:text-secondary" href={telHref(p.phone)}>{p.phone}</a>
+                </p>
+              ))
+            ) : (
+              <>
+                <p className="text-sm text-on-surface-variant">{EVENT.dateGu} / {EVENT.dateEn}</p>
+                <p className="text-sm text-on-surface-variant">{EVENT.venueEn}</p>
+              </>
+            )}
+          </div>
+
+          <div className="space-y-1.5">
+            <p className="font-semibold text-on-surface">મહત્વની કડીઓ / Quick Links</p>
+            <div className="flex flex-col space-y-1 text-sm text-on-surface-variant">
+              <Link className="hover:text-primary" to="/register">ઓનલાઈન નોંધણી / Online Registration</Link>
+              <Link className="hover:text-primary" to="/status">નોંધણી સ્થિતિ / Check Registration Status</Link>
+              <Link className="hover:text-primary" to="/#venue">સ્થળ / Venue &amp; Directions</Link>
+              <Link className="hover:text-primary" to="/#faq">પ્રશ્નો / FAQ</Link>
+              <Link className="hover:text-primary" to="/admin">આયોજક લૉગિન / Organiser Login</Link>
             </div>
           </div>
-          <div className="footer-bottom">
-            <span>© 2026 {SITE.orgShort} ({SITE.wing})</span>
-            <Link to="/admin">Organiser login</Link>
-          </div>
+        </div>
+        <div className="w-full bg-surface-container-high px-4 py-4 text-center text-xs text-on-surface-variant md:text-sm">
+          © 2026 અખિલ ભારતીય રાષ્ટ્રીય શૈક્ષિક મહાસંઘ, ગુજરાત (ABRSM Gujarat). સર્વાધિકાર સુરક્ષિત / All Rights Reserved.
         </div>
       </footer>
     </div>
-  );
-}
-
-export function Seal() {
-  return (
-    <svg className="seal-mark" viewBox="0 0 48 48" aria-hidden="true">
-      <circle cx="24" cy="24" r="23" fill="var(--brand)" />
-      <circle cx="24" cy="24" r="18.5" fill="none" stroke="var(--saffron)" strokeWidth="1.2" />
-      {/* open book */}
-      <path d="M13 18.5c3.6-1.2 7.3-.9 11 1.2v13c-3.7-2.1-7.4-2.4-11-1.2z" fill="#fff" />
-      <path d="M35 18.5c-3.6-1.2-7.3-.9-11 1.2v13c3.7-2.1 7.4-2.4 11-1.2z" fill="#fbe3cc" />
-      {/* flame */}
-      <path d="M24 9.5c2.2 2.4 2.6 4.6.9 6.6-.5-.9-1.2-1.4-1.9-1.6.3 1.1 0 2-1 2.6-.9-1.9-.4-4.9 2-7.6z" fill="var(--saffron)" />
-    </svg>
   );
 }

@@ -1,8 +1,4 @@
-// Public-site content. Registration itself happens on Google Forms.
-const FORM_ID = "1FAIpQLSfkhqlEcpximOx1Z7h7sMDNVBUgerX0DbHe0_yMro_LakBuoQ";
-
-export const FORM_URL = `https://docs.google.com/forms/d/e/${FORM_ID}/viewform`;
-export const FORM_EMBED_URL = `${FORM_URL}?embedded=true`;
+// Public-site content.
 
 export const SITE = {
   org: "Akhil Bharatiya Rashtriya Shaikshik Mahasangh",

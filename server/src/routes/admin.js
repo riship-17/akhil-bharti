@@ -7,6 +7,7 @@ import { CADRES, FEE, STATUSES, designationText, labelOf } from "../../../shared
 import { Registration, Settings } from "../models.js";
 import { deleteFile, saveFile, sendFile, uploader } from "../lib/files.js";
 import { mailEnabled, notify } from "../lib/mail.js";
+import { newPassToken, sendBhojanPass, whatsappEnabled } from "../lib/whatsapp.js";
 
 const router = Router();
 const { ADMIN_PASSWORD, JWT_SECRET } = process.env;
@@ -72,6 +73,7 @@ router.get("/stats", async (req, res) => {
     collected: counts.verified * FEE,
     byDistrict: byDistrict.map((d) => ({ district: d._id, count: d.n })),
     mailEnabled,
+    whatsappEnabled,
   });
 });
 
@@ -93,7 +95,7 @@ router.get("/registrations/:id", async (req, res) => {
 
 router.get("/registrations/:id/receipt", async (req, res) => {
   const r = await findReg(req, res);
-  if (r) await sendFile(r.receipt.fileId, res, `${r.regNo}-receipt`);
+  if (r) await sendFile(r.receipt?.fileId, res, `${r.regNo}-receipt`);
 });
 
 router.patch("/registrations/:id", async (req, res) => {
@@ -106,17 +108,26 @@ router.patch("/registrations/:id", async (req, res) => {
   if (status) r.status = status;
   if (adminNote !== undefined) r.adminNote = String(adminNote).slice(0, 500);
   if (changed) r.reviewedAt = status === "pending" ? undefined : new Date();
+  if (r.status === "verified" && !r.pass?.token) r.set("pass.token", newPassToken());
   await r.save();
 
   let emailed = false;
+  let whatsapp = null;
   if (changed && (status === "verified" || status === "rejected")) {
-    emailed = await notify(status, r);
+    [emailed, whatsapp] = await Promise.all([notify(status, r), status === "verified" ? sendBhojanPass(r) : null]);
     if (emailed && status === "verified") {
       r.confirmationEmailedAt = new Date();
       await r.save();
     }
   }
-  res.json({ registration: r, emailed });
+  res.json({ registration: await Registration.findById(r._id), emailed, whatsapp });
+});
+
+router.post("/registrations/:id/pass", async (req, res) => {
+  const r = await findReg(req, res);
+  if (!r) return;
+  const whatsapp = await sendBhojanPass(r);
+  res.status(whatsapp.sent ? 200 : 400).json({ registration: await Registration.findById(r._id), whatsapp, error: whatsapp.error });
 });
 
 router.delete("/registrations/:id", async (req, res) => {
@@ -145,7 +156,9 @@ router.get("/export.csv", async (req, res) => {
     ["Institution & Address", (r) => r.institution],
     ["Residential Address", (r) => r.residentialAddress],
     ["Amount", (r) => r.amount],
-    ["UTR", (r) => r.utr],
+    ["Payment", (r) => (r.paymentMethod === "razorpay" ? "Razorpay" : "UPI")],
+    ["UTR / Payment ID", (r) => r.utr],
+    ["Bhojan Pass sent on WhatsApp", (r) => (r.pass?.sentAt ? new Date(r.pass.sentAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }) : "")],
     ["Admin Note", (r) => r.adminNote],
   ];
   const cell = (v) => {

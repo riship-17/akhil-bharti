@@ -39,7 +39,7 @@ const templates = {
       <p>નમસ્તે ${esc(r.fullName)},</p>
       <p>આપની નોંધણી અમને મળી ગઈ છે. ચુકવણીની ચકાસણી બાદ આપને કન્ફર્મેશન મોકલવામાં આવશે.</p>
       <p style="color:#6b625b">We have received your registration. You will get a confirmation once the organising team verifies your payment.</p>
-      <table style="border-collapse:collapse;margin:12px 0">${row("Registration No", r.regNo)}${row("Amount", `₹${FEE}`)}${row("UTR", r.utr)}</table>`),
+      <table style="border-collapse:collapse;margin:12px 0">${row("Registration No", r.regNo)}${row("Amount", `₹${FEE}`)}${row("Transaction ID", r.utr)}</table>`),
   }),
   verified: (r) => ({
     subject: `Registration confirmed – ${r.regNo} | ABRSM State Conference 2026`,
