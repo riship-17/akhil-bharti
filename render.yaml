@@ -2,7 +2,7 @@
 # Keys marked `sync: false` are asked for when the Blueprint is created (they are secrets, never stored here).
 services:
   - type: web
-    name: abrsm-conference-2026
+    name: akhil-bharti
     runtime: node
     plan: starter # free instances sleep after 15 min idle; use starter (or higher) for the live event
     region: singapore

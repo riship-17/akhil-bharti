@@ -1,7 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "rewrites": [
-    { "source": "/api/:path*", "destination": "https://abrsm-conference-2026.onrender.com/api/:path*" },
+    { "source": "/api/:path*", "destination": "https://akhil-bharti.onrender.com/api/:path*" },
     { "source": "/(.*)", "destination": "/index.html" }
   ]
 }
