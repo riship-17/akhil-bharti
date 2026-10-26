@@ -1,17 +1,17 @@
 import crypto from "node:crypto";
 import { Router } from "express";
 import rateLimit from "express-rate-limit";
-import jwt from "jsonwebtoken";
 import mongoose from "mongoose";
-import { CADRES, FEE, STATUSES, designationText, labelOf } from "../../../shared/constants.js";
+import { CADRES, FEE, STATUSES, UPI, designationText, labelOf } from "../../../shared/constants.js";
 import { Registration, Settings } from "../models.js";
 import { deleteFile, saveFile, sendFile, uploader } from "../lib/files.js";
-import { mailEnabled, notify, sendCertificate, sendConfirmation } from "../lib/mail.js";
+import { mailEnabled, notify, sendCertificate, sendPass } from "../lib/mail.js";
 import { certificateFilename, certificatePdf } from "../lib/certificate.js";
-import { newPassToken, sendBhojanPass, whatsappEnabled } from "../lib/whatsapp.js";
+import { newPassToken } from "../lib/pass.js";
+import { requireAdmin, signToken } from "../lib/auth.js";
 
 const router = Router();
-const { ADMIN_PASSWORD, JWT_SECRET } = process.env;
+const { ADMIN_PASSWORD } = process.env;
 
 const originOf = (req) => `${req.protocol}://${req.get("host")}`;
 const sha = (s) => crypto.createHash("sha256").update(String(s)).digest();
@@ -23,20 +23,12 @@ router.post(
     if (!crypto.timingSafeEqual(sha(req.body?.password ?? ""), sha(ADMIN_PASSWORD))) {
       return res.status(401).json({ error: "Incorrect password." });
     }
-    res.json({ token: jwt.sign({ role: "admin" }, JWT_SECRET, { expiresIn: "12h" }) });
+    res.json({ token: signToken({ role: "admin" }, "12h") });
   }
 );
 
-// Everything below needs a token. File/CSV links opened in a new tab pass it as ?t=
-router.use((req, res, next) => {
-  const token = req.get("authorization")?.replace(/^Bearer /, "") || req.query.t;
-  try {
-    jwt.verify(String(token), JWT_SECRET);
-    next();
-  } catch {
-    res.status(401).json({ error: "Your session has expired. Please log in again." });
-  }
-});
+// Everything below needs an admin token (participant tokens are refused).
+router.use(requireAdmin);
 
 const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
@@ -75,7 +67,6 @@ router.get("/stats", async (req, res) => {
     collected: counts.verified * FEE,
     byDistrict: byDistrict.map((d) => ({ district: d._id, count: d.n })),
     mailEnabled,
-    whatsappEnabled,
   });
 });
 
@@ -113,30 +104,20 @@ router.patch("/registrations/:id", async (req, res) => {
   if (r.status === "verified" && !r.pass?.token) r.set("pass.token", newPassToken());
   await r.save();
 
-  let emailed = false;
-  let whatsapp = null;
-  if (changed && status === "verified") {
-    [emailed, whatsapp] = await Promise.all([sendConfirmation(r, originOf(req)), sendBhojanPass(r)]);
-  } else if (changed && status === "rejected") {
-    emailed = await notify("rejected", r);
-  }
-  res.json({ registration: await Registration.findById(r._id), emailed, whatsapp });
+  // Verifying doesn't email anything: the Bhojan Pass is sent separately (one by one or as a broadcast).
+  const emailed = changed && status === "rejected" ? await notify("rejected", r) : false;
+  res.json({ registration: await Registration.findById(r._id), emailed });
 });
 
+// Send (or resend) one participant's Bhojan Pass by email. Without email set up, the pass is still
+// issued and shows in the participant's account.
 router.post("/registrations/:id/pass", async (req, res) => {
   const r = await findReg(req, res);
   if (!r) return;
-  const whatsapp = await sendBhojanPass(r);
-  res.status(whatsapp.sent ? 200 : 400).json({ registration: await Registration.findById(r._id), whatsapp, error: whatsapp.error });
-});
-
-router.post("/registrations/:id/email", async (req, res) => {
-  const r = await findReg(req, res);
-  if (!r) return;
-  if (r.status !== "verified") return res.status(400).json({ error: "The confirmation email is sent only for confirmed registrations." });
-  if (!mailEnabled) return res.status(400).json({ error: "Email is not set up on the server (RESEND_API_KEY)." });
-  if (!(await sendConfirmation(r, originOf(req)))) return res.status(502).json({ error: "Could not send the email. Check the server log for the reason." });
-  res.json({ registration: await Registration.findById(r._id) });
+  if (r.status !== "verified") return res.status(400).json({ error: "Verify the payment before sending the Bhojan Pass." });
+  await ensurePassToken(r);
+  const result = await sendPass(r, originOf(req));
+  res.json({ registration: await Registration.findById(r._id), emailed: result.sent, error: result.error });
 });
 
 router.get("/registrations/:id/certificate", async (req, res) => {
@@ -165,28 +146,65 @@ router.delete("/registrations/:id", async (req, res) => {
   res.json({ ok: true });
 });
 
-// ---- Certificates: emailed to every confirmed participant after the conference ----
-
 async function ensurePassToken(r) {
-  // The certificate download link uses the pass token as its secret.
+  // The pass link and the certificate download link both use the pass token as their secret.
   if (!r.pass?.token) {
     r.set("pass.token", newPassToken());
     await r.save();
   }
 }
 
-// One bulk send at a time, kept in memory. If the server restarts mid-way, pressing Send again
-// carries on with the people who have not received theirs yet.
-let certificateRun = null;
+// ---- Bulk emails (Bhojan Pass broadcast, certificates) ----
+// One run of each kind at a time, kept in memory. If the server restarts mid-way, pressing the button
+// again carries on with the people who have not received theirs yet.
+const runs = {};
 
-async function runCertificates(registrations, { origin, signatories }) {
-  for (const r of registrations) {
-    await ensurePassToken(r);
-    const { sent } = await sendCertificate(r, { origin, signatories });
-    certificateRun[sent ? "sent" : "failed"]++;
-    await new Promise((done) => setTimeout(done, 600)); // stay under Resend's rate limit
-  }
+function startRun(kind, registrations, sendOne) {
+  const run = (runs[kind] = { running: true, total: registrations.length, sent: 0, failed: 0, startedAt: new Date() });
+  (async () => {
+    for (const r of registrations) {
+      await ensurePassToken(r);
+      const { sent } = await sendOne(r);
+      run[sent ? "sent" : "failed"]++;
+      await new Promise((done) => setTimeout(done, 600)); // stay under Resend's rate limit
+    }
+  })()
+    .catch((err) => {
+      console.error(`[${kind}] bulk send stopped:`, err);
+      run.error = err.message;
+    })
+    .finally(() => {
+      run.running = false;
+      run.finishedAt = new Date();
+    });
 }
+
+// ---- Bhojan Pass broadcast: every verified participant whose pass hasn't been emailed yet ----
+
+const passNotSent = { status: "verified", "pass.emailedAt": { $exists: false } };
+
+async function passSummary() {
+  const [verified, sent, failed] = await Promise.all([
+    Registration.countDocuments({ status: "verified" }),
+    Registration.countDocuments({ status: "verified", "pass.emailedAt": { $exists: true } }),
+    Registration.countDocuments({ ...passNotSent, "pass.lastError": { $exists: true } }),
+  ]);
+  return { verified, sent, failed, run: runs.passes || null, mailEnabled };
+}
+
+router.get("/passes", async (req, res) => res.json(await passSummary()));
+
+router.post("/passes/send", async (req, res) => {
+  if (!mailEnabled) return res.status(400).json({ error: "Email is not set up on the server (RESEND_API_KEY)." });
+  if (!runs.passes?.running) {
+    const todo = await Registration.find(passNotSent).sort({ createdAt: 1 });
+    const origin = originOf(req);
+    startRun("passes", todo, (r) => sendPass(r, origin));
+  }
+  res.json(await passSummary());
+});
+
+// ---- Certificates: emailed to every confirmed participant after the conference ----
 
 async function certificateSummary() {
   const s = await Settings.load();
@@ -195,7 +213,7 @@ async function certificateSummary() {
     Registration.countDocuments({ status: "verified", "certificate.emailedAt": { $exists: true } }),
     Registration.countDocuments({ status: "verified", "certificate.emailedAt": { $exists: false }, "certificate.lastError": { $exists: true } }),
   ]);
-  return { releasedAt: s.certificate?.releasedAt || null, verified, sent, failed, run: certificateRun, mailEnabled };
+  return { releasedAt: s.certificate?.releasedAt || null, verified, sent, failed, run: runs.certificates || null, mailEnabled };
 }
 
 router.get("/certificates", async (req, res) => res.json(await certificateSummary()));
@@ -211,7 +229,7 @@ router.get("/certificates/preview", async (req, res) => {
 
 router.post("/certificates/send", async (req, res) => {
   if (!mailEnabled) return res.status(400).json({ error: "Email is not set up on the server (RESEND_API_KEY)." });
-  if (certificateRun?.running) return res.json(await certificateSummary());
+  if (runs.certificates?.running) return res.json(await certificateSummary());
 
   const s = await Settings.load();
   if (!s.certificate?.releasedAt) {
@@ -219,25 +237,19 @@ router.post("/certificates/send", async (req, res) => {
     await s.save();
   }
   const todo = await Registration.find({ status: "verified", "certificate.emailedAt": { $exists: false } }).sort({ createdAt: 1 });
-  certificateRun = { running: true, total: todo.length, sent: 0, failed: 0, startedAt: new Date() };
-  runCertificates(todo, { origin: originOf(req), signatories: s.certificate.signatories })
-    .catch((err) => {
-      console.error("[certificates] bulk send stopped:", err);
-      certificateRun.error = err.message;
-    })
-    .finally(() => {
-      certificateRun.running = false;
-      certificateRun.finishedAt = new Date();
-    });
+  const options = { origin: originOf(req), signatories: s.certificate.signatories };
+  startRun("certificates", todo, (r) => sendCertificate(r, options));
   res.json(await certificateSummary());
 });
+
+const istTime = (d) => (d ? new Date(d).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }) : "");
 
 router.get("/export.csv", async (req, res) => {
   const rows = await Registration.find(buildFilter(req.query)).sort({ createdAt: 1 }).lean();
   const cols = [
     ["Reg No", (r) => r.regNo],
     ["Status", (r) => r.status],
-    ["Submitted", (r) => new Date(r.createdAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })],
+    ["Submitted", (r) => istTime(r.createdAt)],
     ["Full Name", (r) => r.fullName],
     ["Email", (r) => r.email],
     ["Mobile", (r) => r.mobile],
@@ -250,11 +262,9 @@ router.get("/export.csv", async (req, res) => {
     ["Institution & Address", (r) => r.institution],
     ["Residential Address", (r) => r.residentialAddress],
     ["Amount", (r) => r.amount],
-    ["Payment", (r) => (r.paymentMethod === "razorpay" ? "Razorpay" : "UPI")],
-    ["UTR / Payment ID", (r) => r.utr],
-    ["Bhojan Pass sent on WhatsApp", (r) => (r.pass?.sentAt ? new Date(r.pass.sentAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }) : "")],
-    ["Confirmation emailed", (r) => (r.confirmationEmailedAt ? new Date(r.confirmationEmailedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }) : "")],
-    ["Certificate emailed", (r) => (r.certificate?.emailedAt ? new Date(r.certificate.emailedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }) : "")],
+    ["UTR", (r) => r.utr],
+    ["Bhojan Pass emailed", (r) => istTime(r.pass?.emailedAt)],
+    ["Certificate emailed", (r) => istTime(r.certificate?.emailedAt)],
     ["Admin Note", (r) => r.adminNote],
   ];
   const cell = (v) => {
@@ -275,7 +285,10 @@ router.get("/export.csv", async (req, res) => {
 
 const SETTINGS_FIELDS = ["upiId", "payeeName", "accountName", "bankName", "accountNo", "ifsc"];
 
-router.get("/settings", async (req, res) => res.json(await Settings.load()));
+// An empty UPI ID / payee falls back to the organiser's PhonePe UPI, as on the public site.
+const withUpiDefaults = (s) => ({ ...s.toObject(), upiId: s.upiId || UPI.id, payeeName: s.payeeName || UPI.payee });
+
+router.get("/settings", async (req, res) => res.json(withUpiDefaults(await Settings.load())));
 
 router.put("/settings", async (req, res) => {
   const s = await Settings.load();
@@ -295,7 +308,7 @@ router.put("/settings", async (req, res) => {
       .filter((c) => c.name && c.phone);
   }
   await s.save();
-  res.json(s);
+  res.json(withUpiDefaults(s));
 });
 
 router.post("/settings/qr", uploader(["image/jpeg", "image/png", "image/webp"]).single("qr"), async (req, res) => {

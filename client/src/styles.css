@@ -70,8 +70,6 @@ code { font-family: var(--mono); font-size: .85em; background: var(--accent-soft
 .btn.danger { color: var(--red); border-color: #e7b4ae; }
 .btn.danger:hover { background: var(--red-soft); }
 .btn.danger-solid { background: var(--red); border-color: var(--red); }
-.btn.wa { background: #fff; color: #11703c; border-color: #9fd3b4; }
-.btn.wa:hover { background: #eaf7ef; }
 .link { background: none; border: 0; padding: 0; color: var(--accent); font-weight: 500; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; font-size: 15px; }
 .link.danger { color: var(--red); }
 .link:disabled { opacity: .5; }
@@ -135,9 +133,6 @@ input::placeholder, textarea::placeholder { color: #a39a92; }
 /* payment */
 .pay-panel { display: grid; grid-template-columns: 260px 1fr; gap: 32px; align-items: start; margin-bottom: 32px; padding-bottom: 32px; border-bottom: 1px solid var(--line); }
 .pay-panel.skeleton { min-height: 300px; }
-.pay-online { margin-bottom: 32px; padding: 22px; background: var(--card); border: 1px solid var(--line); }
-.pay-online p:not(.amount) { margin: 14px 0 0; }
-.pay-online .muted { margin-top: 4px; font-size: 14.5px; }
 .qr-box { background: var(--card); border: 1px solid var(--line); padding: 18px; text-align: center; }
 .qr-box img { display: block; width: 100%; aspect-ratio: 1; object-fit: contain; }
 .qr-empty { aspect-ratio: 1; border: 1.5px dashed var(--line-strong); display: grid; place-items: center; color: var(--muted); font-size: 14px; padding: 20px; }
@@ -193,7 +188,7 @@ input::placeholder, textarea::placeholder { color: #a39a92; }
 .chip.rejected { background: var(--red-soft); color: var(--red); }
 
 /* ---------- admin ---------- */
-.admin { min-height: 100vh; background: #f6f3ee; font-size: 15.5px; }
+.admin { min-height: 100vh; min-height: 100dvh; background: #f6f3ee; font-size: 15.5px; }
 .admin-bar { background: var(--card); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 5; }
 .admin-row { max-width: 1280px; margin: 0 auto; padding: 10px 20px; display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
 .admin-brand { display: flex; align-items: center; gap: 10px; text-decoration: none; color: var(--ink); font-weight: 600; line-height: 1.25; }
@@ -210,6 +205,11 @@ input::placeholder, textarea::placeholder { color: #a39a92; }
 .stat span { color: var(--muted); font-size: 13.5px; }
 .stat.accent { border-top: 3px solid var(--amber); }
 .admin-hint { background: var(--amber-soft); color: #5c3d00; padding: 10px 14px; font-size: 14px; margin: 14px 0 0; }
+.broadcast { background: var(--card); border: 1px solid var(--line); border-left: 3px solid var(--accent); padding: 16px 20px; margin-top: 14px; }
+.broadcast h2 { font-family: var(--sans); font-size: 18px; margin: 0 0 4px; }
+.broadcast .panel-row p + p { margin-top: 4px; }
+.broadcast-confirm { display: flex; align-items: center; gap: 12px; }
+.danger-text { color: var(--red); }
 
 .toolbar { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; flex-wrap: wrap; margin: 24px 0 12px; }
 .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); }
@@ -260,7 +260,7 @@ input::placeholder, textarea::placeholder { color: #a39a92; }
 .admin-msg { background: var(--green-soft); color: var(--green); padding: 10px 12px; font-size: 14.5px; margin: 14px 0 0; }
 .admin-msg.admin-msg-inline { margin: 0; padding: 6px 10px; }
 
-.login-page { min-height: 100vh; display: grid; place-items: center; padding: 20px; background: var(--paper); }
+.login-page { min-height: 100vh; min-height: 100dvh; display: grid; place-items: center; padding: 20px; background: var(--paper); }
 .login { width: 100%; max-width: 360px; background: var(--card); border: 1px solid var(--line); border-top: 4px solid var(--accent); padding: 32px 28px; }
 .login h1 { font-family: var(--serif); font-size: 26px; margin: 16px 0 0; }
 .login .muted { margin: 2px 0 22px; font-size: 14.5px; }
@@ -302,4 +302,9 @@ input::placeholder, textarea::placeholder { color: #a39a92; }
   .contact-row { grid-template-columns: 1fr; padding-bottom: 10px; border-bottom: 1px solid var(--line); }
   .kv div { grid-template-columns: 1fr; gap: 0; }
   .qr-settings { flex-direction: column; }
+}
+
+/* iPhone Safari zooms into any field with text smaller than 16px when it is tapped. */
+@media (max-width: 640px) {
+  .admin input, .admin select, .admin textarea, .login-page input { font-size: 16px; }
 }

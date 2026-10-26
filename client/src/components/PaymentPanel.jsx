@@ -8,7 +8,8 @@ export function upiLink(c) {
   return `upi://pay?${p.toString().replace(/\+/g, "%20")}`;
 }
 
-// Manual UPI payment details — shown only when Razorpay is not configured.
+// UPI payment details on the last step of the form: a QR code for the organiser's UPI ID with the fee
+// pre-filled (or the QR image uploaded in the admin panel), plus a pay button that opens the UPI app on phones.
 export default function PaymentPanel() {
   const c = useConfig();
   const [generated, setGenerated] = useState("");
@@ -24,9 +25,9 @@ export default function PaymentPanel() {
   const qrSrc = c.qrUrl || generated;
   const rows = [
     ["UPI ID", c.upiId, true],
-    ["ખાતાધારક / A/c name", c.accountName],
-    ["બેંક / Bank", c.bankName],
-    ["ખાતા નંબર / A/c no.", c.accountNo, true],
+    ["A/c name", c.accountName],
+    ["Bank", c.bankName],
+    ["A/c no.", c.accountNo, true],
     ["IFSC", c.ifsc, true],
   ].filter((r) => r[1]);
 
@@ -45,11 +46,11 @@ export default function PaymentPanel() {
         ) : (
           <div className="flex aspect-square items-center justify-center rounded-lg border-[1.5px] border-dashed border-outline-variant p-4 text-sm text-on-surface-variant">QR code will be added soon</div>
         )}
-        <p className="mt-2 text-sm font-semibold">Scan &amp; pay via UPI<span className="block text-xs font-normal text-on-surface-variant">કોઈપણ UPI એપથી સ્કેન કરો</span></p>
+        <p className="mt-2 text-sm font-semibold">Scan &amp; pay with any UPI app</p>
         {link && <a className="mt-2 inline-flex rounded-lg px-3 py-1.5 text-sm font-semibold text-primary ring-1 ring-inset ring-primary sm:hidden" href={link}>Pay ₹{c.fee} in UPI app</a>}
       </div>
       <div>
-        <p className="text-4xl font-bold leading-none text-on-primary-fixed-variant">₹ {c.fee}<small className="ml-2 text-[15px] font-normal text-on-surface-variant">અંકે રૂપિયા પાંચસો પૂરા</small></p>
+        <p className="text-4xl font-bold leading-none text-on-primary-fixed-variant">₹ {c.fee}<small className="ml-2 text-[15px] font-normal text-on-surface-variant">Five hundred rupees only</small></p>
         {rows.length > 0 && (
           <table className="mt-4 w-full text-[15px]">
             <tbody>
@@ -70,8 +71,7 @@ export default function PaymentPanel() {
           </table>
         )}
         <div className="mt-4 rounded-r-lg border-l-[3px] border-primary bg-primary-fixed/40 px-3.5 py-3 text-[15px]">
-          <p>ચુકવણી સફળ થયા પછી સ્ક્રીનશોટ લઈ લો અને UTR નંબર નોંધી રાખો.</p>
-          <p className="mt-1 text-sm text-on-surface-variant">After paying, take a screenshot and note the 12-digit UTR / transaction ID shown in your UPI app.</p>
+          <p>After paying, take a screenshot and note the 12-digit UTR / transaction ID shown in your UPI app.</p>
         </div>
       </div>
     </div>

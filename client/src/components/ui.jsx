@@ -1,7 +1,5 @@
 // Small building blocks for the public site (Tailwind).
 
-export const guNum = (n) => String(n).replace(/\d/g, (d) => "૦૧૨૩૪૫૬૭૮૯"[d]);
-
 export function Icon({ name, className = "", fill = false }) {
   return (
     <span
@@ -17,23 +15,23 @@ export function Icon({ name, className = "", fill = false }) {
 export function OptionalPill() {
   return (
     <span className="shrink-0 rounded-md bg-surface-container px-2.5 py-1 text-xs font-medium text-on-surface-variant">
-      વૈકલ્પિક / OPTIONAL
+      OPTIONAL
     </span>
   );
 }
 
-// Bilingual label + control + error/hint, as in the registration mockups.
+// Label + control + error/hint. `sub` is an optional second line under the label.
 // Pass `id` for a single control (renders a <label>), or `labelId` for a group to reference with aria-labelledby.
-export function Field({ id, labelId, gu, en, required, optional, error, hint, hintIcon = "info", children }) {
+export function Field({ id, labelId, label, sub, required, optional, error, hint, hintIcon = "info", children }) {
   const LabelTag = id ? "label" : "div";
   return (
     <div className="flex flex-col" data-error={error ? "" : undefined}>
       <div className="mb-2 flex w-full items-center justify-between gap-3">
         <LabelTag htmlFor={id} id={labelId} className="flex flex-col">
           <span className="text-base font-semibold text-on-surface">
-            {gu} {required && <span className="text-error" aria-hidden="true">*</span>}
+            {label} {required && <span className="text-error" aria-hidden="true">*</span>}
           </span>
-          <span className="text-[15px] leading-snug text-on-surface-variant">{en}</span>
+          {sub && <span className="text-[15px] leading-snug text-on-surface-variant">{sub}</span>}
         </LabelTag>
         {optional && <OptionalPill />}
       </div>

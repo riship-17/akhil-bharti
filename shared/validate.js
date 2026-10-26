@@ -52,4 +52,32 @@ export function validateUtr(utr) {
 }
 
 export const RECEIPT_TYPES = ["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif", "application/pdf"];
+// Largest file accepted from the browser. Images are shrunk before they are stored (see server/src/lib/files.js);
+// PDFs are stored as they are, so they get a much lower limit.
 export const MAX_RECEIPT_BYTES = 10 * 1024 * 1024;
+export const MAX_PDF_BYTES = 2 * 1024 * 1024;
+
+// ---- Participant accounts ----
+
+export const MIN_PASSWORD = 8;
+
+export function cleanAccount(src = {}) {
+  return { name: str(src.name), email: str(src.email).toLowerCase(), mobile: normalizeMobile(src.mobile) };
+}
+
+export function validatePassword(password) {
+  if (typeof password !== "string" || password.length < MIN_PASSWORD) return `Use at least ${MIN_PASSWORD} characters.`;
+  if (password.length > 200) return "Too long.";
+  return null;
+}
+
+export function validateAccount(a, password) {
+  const e = {};
+  if (a.name.length < 3) e.name = "Enter your full name.";
+  if (a.name.length > 120) e.name = "Too long.";
+  if (!EMAIL.test(a.email) || a.email.length > 200) e.email = "Enter a valid email address.";
+  if (!/^[6-9]\d{9}$/.test(a.mobile)) e.mobile = "Enter a valid 10-digit mobile number.";
+  const pw = validatePassword(password);
+  if (pw) e.password = pw;
+  return e;
+}

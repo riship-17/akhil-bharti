@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 import { PDFDocument } from "pdf-lib";
 import { EVENT, designationText } from "../../../shared/constants.js";
 
-// Certificate of participation: drawn as SVG, rendered by sharp (librsvg + Pango, which shapes Gujarati
+// Certificate of participation: drawn as SVG, rendered by sharp (librsvg + Pango, which shapes names typed in Gujarati
 // correctly) and wrapped in an A4 landscape PDF. Fontconfig must point at the bundled fonts before sharp loads.
 process.env.FONTCONFIG_FILE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../assets/fonts/fonts.conf");
 const { default: sharp } = await import("sharp");
@@ -47,12 +47,12 @@ export function certificateSvg(r, signatories = []) {
   <rect x="62" y="62" width="${W - 124}" height="${H - 124}" fill="none" stroke="${GOLD}" stroke-width="2.5"/>
   ${[[62, 62], [W - 62, 62], [62, H - 62], [W - 62, H - 62]].map(([cx, cy]) => `<circle cx="${cx}" cy="${cy}" r="9" fill="${GOLD}"/>`).join("")}
 
-  ${text(150, 24, EVENT.motto, { fill: MUTED })}
-  ${text(212, 40, EVENT.orgGu, { weight: 700, fill: BRAND })}
-  ${text(258, 26, EVENT.orgEn, { fill: MUTED })}
+  ${text(150, 24, EVENT.motto, { italic: true, fill: MUTED })}
+  ${text(212, 40, EVENT.org, { weight: 700, fill: BRAND })}
+  ${text(258, 26, "Higher Education", { fill: MUTED })}
 
-  ${text(372, 64, "પ્રમાણપત્ર", { weight: 700 })}
-  ${text(430, 34, "CERTIFICATE OF PARTICIPATION", { fill: GOLD, spacing: 6 })}
+  ${text(372, 64, "Certificate", { weight: 700 })}
+  ${text(430, 34, "OF PARTICIPATION", { fill: GOLD, spacing: 6 })}
   <line x1="${W / 2 - 160}" y1="462" x2="${W / 2 + 160}" y2="462" stroke="${GOLD}" stroke-width="2"/>
 
   ${text(536, 28, "This is to certify that", { italic: true, fill: MUTED })}
@@ -61,7 +61,6 @@ export function certificateSvg(r, signatories = []) {
 
   ${text(760, 30, `participated in the ${EVENT.titleEn} of ABRSM Gujarat (Higher Education)`)}
   ${text(806, 30, `held on ${EVENT.dateEn} at Gujarat University Convention Centre, Ahmedabad.`)}
-  ${text(870, 28, `${EVENT.orgGu.split(",")[0]}, ગુજરાતના ${EVENT.titleGu}માં સહભાગી થવા બદલ આ પ્રમાણપત્ર એનાયત કરવામાં આવે છે.`, { fill: MUTED })}
 
   ${signs.map((s, i) => signatureBlock(step * (i + 1), s)).join("")}
 

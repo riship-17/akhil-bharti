@@ -1,15 +1,16 @@
 import { useEffect } from "react";
 import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
+import { useAuth } from "../auth.js";
 import { useConfig } from "../config.js";
 import { EVENT } from "../../../shared/constants.js";
 import { Icon, Seal, telHref } from "./ui.jsx";
 
 const NAV = [
-  ["/", "પરિષદ પરિચય / Overview"],
-  ["/register", "પ્રતિનિધિ નોંધણી / Registration"],
-  ["/#venue", "સ્થળ / Venue"],
-  ["/#faq", "પ્રશ્નો / FAQ"],
-  ["/status", "નોંધણી સ્થિતિ / Check Status"],
+  ["/", "Overview"],
+  ["/register", "Registration"],
+  ["/#venue", "Venue"],
+  ["/#faq", "FAQ"],
+  ["/account", "My Registration"],
 ];
 
 const navClass = (active) =>
@@ -20,6 +21,7 @@ const navClass = (active) =>
 export default function Layout() {
   const { pathname, hash } = useLocation();
   const contacts = useConfig()?.contacts || [];
+  const { user, logout } = useAuth();
   const helpline = contacts[0];
 
   useEffect(() => {
@@ -29,7 +31,7 @@ export default function Layout() {
   }, [pathname, hash]);
 
   return (
-    <div className="tw flex min-h-screen flex-col">
+    <div className="tw flex min-h-dvh flex-col">
       <header className="z-40 bg-surface/95 shadow-[0_2px_8px_rgba(0,0,0,0.06)] backdrop-blur-xl md:sticky md:top-0 print:hidden">
         <div className="h-1.5 w-full bg-gradient-to-r from-primary via-secondary to-primary-container" />
         <div className="flex h-1 w-full items-center justify-around overflow-hidden bg-surface-variant opacity-40" aria-hidden="true">
@@ -40,22 +42,35 @@ export default function Layout() {
           <Link to="/" className="flex min-w-0 items-center gap-3">
             <Seal className="h-11 w-11 shrink-0 md:h-12 md:w-12" />
             <span className="flex min-w-0 flex-col justify-center">
-              <span className="text-[15px] font-semibold leading-tight text-primary md:text-base">અખિલ ભારતીય રાષ્ટ્રીય શૈક્ષિક મહાસંઘ, ગુજરાત</span>
-              <span className="text-xs leading-tight tracking-tight text-on-surface-variant md:text-sm">Akhil Bharatiya Rashtriya Shaikshik Mahasangh, Gujarat</span>
+              <span className="text-[15px] font-semibold leading-tight text-primary md:text-base">{EVENT.org}</span>
+              <span className="text-xs leading-tight tracking-tight text-on-surface-variant md:text-sm">Higher Education · {EVENT.titleEn}</span>
             </span>
           </Link>
 
           <div className="flex shrink-0 items-center gap-4">
             {helpline && (
               <div className="hidden flex-col items-end text-right text-xs text-on-surface-variant xl:flex">
-                <span className="font-medium text-primary">હેલ્પલાઇન / Helpline: <a href={telHref(helpline.phone)}>{helpline.phone}</a></span>
+                <span className="font-medium text-primary">Helpline: <a href={telHref(helpline.phone)}>{helpline.phone}</a></span>
                 <span>{helpline.name}{helpline.role ? ` · ${helpline.role}` : ""}</span>
               </div>
             )}
-            <Link to="/register" className="hidden h-10 items-center gap-1.5 rounded-full bg-primary px-4 text-sm font-semibold text-on-primary shadow-sm transition-colors hover:bg-secondary sm:inline-flex">
-              નોંધણી / Register
-              <Icon name="arrow_forward" className="text-[18px]" />
-            </Link>
+            {user ? (
+              <div className="flex items-center gap-3">
+                <Link to="/account" className="flex h-10 items-center gap-1.5 rounded-full bg-primary-fixed/50 px-3 text-sm font-semibold text-primary hover:bg-primary-fixed">
+                  <Icon name="account_circle" className="text-[20px]" />
+                  <span className="hidden max-w-[10rem] truncate sm:inline">{user.name}</span>
+                </Link>
+                <button type="button" onClick={logout} className="hidden text-sm font-semibold text-on-surface-variant underline hover:text-primary md:inline">Log out</button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-3">
+                <Link to="/login" className="text-sm font-semibold text-primary hover:underline">Log in</Link>
+                <Link to="/register" className="hidden h-10 items-center gap-1.5 rounded-full bg-primary px-4 text-sm font-semibold text-on-primary shadow-sm transition-colors hover:bg-secondary sm:inline-flex">
+                  Register
+                  <Icon name="arrow_forward" className="text-[18px]" />
+                </Link>
+              </div>
+            )}
           </div>
         </div>
 
@@ -79,13 +94,13 @@ export default function Layout() {
       <footer className="mt-10 w-full bg-surface-container-low print:hidden">
         <div className="mx-auto grid max-w-7xl grid-cols-1 gap-8 px-4 py-10 md:grid-cols-3 lg:px-10">
           <div className="space-y-1.5">
-            <p className="font-semibold text-primary">અખિલ ભારતીય રાષ્ટ્રીય શૈક્ષિક મહાસંઘ, ગુજરાત</p>
-            <p className="text-[15px] text-on-surface-variant">{EVENT.titleGu} / {EVENT.titleEn} · ઉચ્ચ શિક્ષણ</p>
+            <p className="font-semibold text-primary">{EVENT.org}</p>
+            <p className="text-[15px] text-on-surface-variant">{EVENT.titleEn} · Higher Education</p>
             <p className="text-sm text-on-surface-variant">{EVENT.motto}</p>
           </div>
 
           <div className="space-y-1.5">
-            <p className="font-semibold text-on-surface">સંપર્ક અને સહાય / Contact &amp; Helpdesk</p>
+            <p className="font-semibold text-on-surface">Contact &amp; Helpdesk</p>
             {contacts.length > 0 ? (
               contacts.map((p) => (
                 <p key={p.name + p.phone} className="text-sm text-on-surface-variant">
@@ -95,25 +110,25 @@ export default function Layout() {
               ))
             ) : (
               <>
-                <p className="text-sm text-on-surface-variant">{EVENT.dateGu} / {EVENT.dateEn}</p>
+                <p className="text-sm text-on-surface-variant">{EVENT.dateEn}</p>
                 <p className="text-sm text-on-surface-variant">{EVENT.venueEn}</p>
               </>
             )}
           </div>
 
           <div className="space-y-1.5">
-            <p className="font-semibold text-on-surface">મહત્વની કડીઓ / Quick Links</p>
+            <p className="font-semibold text-on-surface">Quick Links</p>
             <div className="flex flex-col space-y-1 text-sm text-on-surface-variant">
-              <Link className="hover:text-primary" to="/register">ઓનલાઈન નોંધણી / Online Registration</Link>
-              <Link className="hover:text-primary" to="/status">નોંધણી સ્થિતિ / Check Registration Status</Link>
-              <Link className="hover:text-primary" to="/#venue">સ્થળ / Venue &amp; Directions</Link>
-              <Link className="hover:text-primary" to="/#faq">પ્રશ્નો / FAQ</Link>
-              <Link className="hover:text-primary" to="/admin">આયોજક લૉગિન / Organiser Login</Link>
+              <Link className="hover:text-primary" to="/register">Online Registration</Link>
+              <Link className="hover:text-primary" to="/account">My Registration &amp; Bhojan Pass</Link>
+              <Link className="hover:text-primary" to="/#venue">Venue &amp; Directions</Link>
+              <Link className="hover:text-primary" to="/#faq">FAQ</Link>
+              <Link className="hover:text-primary" to="/admin">Organiser Login</Link>
             </div>
           </div>
         </div>
         <div className="w-full bg-surface-container-high px-4 py-4 text-center text-xs text-on-surface-variant md:text-sm">
-          © 2026 અખિલ ભારતીય રાષ્ટ્રીય શૈક્ષિક મહાસંઘ, ગુજરાત (ABRSM Gujarat). સર્વાધિકાર સુરક્ષિત / All Rights Reserved.
+          © 2026 {EVENT.org} (ABRSM Gujarat). All Rights Reserved.
         </div>
       </footer>
     </div>

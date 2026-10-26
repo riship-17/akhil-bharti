@@ -3,7 +3,7 @@ import { upload } from "../api.js";
 import { upiLink } from "../components/PaymentPanel.jsx";
 
 const FIELDS = [
-  ["upiId", "UPI ID", "e.g. abrsmgujarat@sbi — also used to generate a QR code if you don't upload one"],
+  ["upiId", "UPI ID", "The organiser's PhonePe UPI is 9879930825-4@ybl. The site turns this into a QR code with ₹500 pre-filled, unless you upload a QR image above."],
   ["payeeName", "Payee name (shown in UPI app)", ""],
   ["accountName", "Account holder name", ""],
   ["bankName", "Bank name", ""],
@@ -88,7 +88,7 @@ export default function Settings({ call, token }) {
             {s.qr?.fileId ? <img src={`/api/qr?v=${s.qr.fileId}`} alt="Current QR" /> : <span>{s.upiId ? "Auto-generated from UPI ID" : "No QR yet"}</span>}
           </div>
           <div>
-            <p className="muted small">Upload the QR image from your bank or UPI app (PNG or JPG). If you don't upload one, the site creates a QR from the UPI ID with ₹500 pre-filled.</p>
+            <p className="muted small">By default the site creates a QR code from the UPI ID below with ₹500 pre-filled (recommended: participants can't pay the wrong amount). You can upload the QR image from PhonePe instead, but then participants have to type the amount themselves.</p>
             <label className="btn ghost small file-btn">
               <input type="file" accept="image/png,image/jpeg,image/webp" onChange={(e) => uploadQr(e.target.files[0])} />
               {s.qr?.fileId ? "Replace QR image" : "Upload QR image"}

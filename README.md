@@ -1,6 +1,6 @@
 # ABRSM Gujarat – State Conference 2026 Registration
 
-MERN app for conference registration: participants fill their details, pay ₹500 by scanning the organiser's UPI QR, enter the UTR and upload the payment screenshot. Organisers verify payments in an admin panel and send confirmations by email and WhatsApp.
+MERN app for conference registration: participants create an account, fill in their details, pay ₹500 by scanning the organiser's UPI QR and upload the payment screenshot. Organisers verify payments in the admin panel and send each participant a Bhojan Pass (a QR code for the food counter) by email — one at a time or as a broadcast — and a certificate of participation after the conference.
 
 ```
 client/   React (Vite) — public site + /admin panel
@@ -21,58 +21,49 @@ Needs MongoDB running locally (`brew services start mongodb-community`) or a Mon
 - Public site: `http://localhost:5173`
 - Organiser panel: `http://localhost:5173/admin` (password = `ADMIN_PASSWORD` in `server/.env`)
 
+## How registration works
+
+1. **Account.** Participants create an account (name, email, mobile, password) and log in. Passwords are hashed with scrypt. "Forgot password" emails a reset link that works for 30 minutes (needs email, see below); resetting signs out every other session.
+2. **Form + UPI payment.** The last step of the form shows a QR code for the organiser's PhonePe UPI `9879930825-4@ybl` with ₹500 pre-filled (on phones there is also a *Pay in UPI app* button). The participant pays, types the UTR and uploads the payment screenshot. One active registration per account; the registration always uses the account's email.
+3. **Verification.** Organisers compare the UTR and screenshot with the bank statement and verify or reject it.
+4. **Bhojan Pass.** Organisers then send the pass, one at a time or as a broadcast (below). It is emailed and also appears under **My registration** (`/account`), where participants can see their status at any time.
+
+Registrations made before accounts existed are linked to an account automatically when someone signs up with the same email and mobile number.
+
+### Screenshot storage
+
+Screenshots are stored in MongoDB (GridFS), so they are kept small: the browser first shrinks the image (max 1080 px wide, JPEG), then the server re-encodes it as WebP, at most 900 px wide (`server/src/lib/files.js`). A typical 1–3 MB phone screenshot ends up around 40–120 KB with the UTR still readable. PDFs can't be shrunk this way and are only accepted up to 2 MB. iPhone HEIC photos are converted in Safari; elsewhere participants are asked for a JPG/PNG.
+
 ## First-time setup in the admin panel
 
 Go to **Payment & settings** and:
-1. Upload the QR image from your bank / UPI app — or just enter the UPI ID and the site generates a QR with ₹500 pre-filled.
+1. Check the UPI ID (defaults to `9879930825-4@ybl`, AKHIL BHARTIY RASHTRIY SHAIKSHIK MAHASANGH GUJARAT). The site turns it into a QR with ₹500 pre-filled. You can upload the PhonePe QR image instead, but then participants must type the amount themselves.
 2. Fill in bank name, account number and IFSC (optional — empty fields are hidden).
 3. Add contact people so participants can call for help.
 
 ## Verifying payments
 
 **Registrations** opens on the *Pending* tab. Click a row, compare the UTR and screenshot with your bank / UPI statement, then:
-- **Verify payment** — marks it confirmed and emails the participant (if email is set up).
-- **Send confirmation on WhatsApp** — opens WhatsApp with a ready bilingual confirmation message.
-- **Reject** — requires a note; the participant sees it on the *Check status* page.
+- **Verify payment** — marks it confirmed. Nothing is emailed yet; send the Bhojan Pass next.
+- **Reject** — requires a note; the participant is emailed and sees the note under *My registration*.
 
 **Export CSV** downloads the current list (opens correctly in Excel, including Gujarati).
 
-## Online payment with Razorpay (optional)
+## Sending the Bhojan Pass
 
-Set `RAZORPAY_KEY_ID` and `RAZORPAY_KEY_SECRET` in `server/.env` (Razorpay Dashboard → Account & Settings → API Keys). The payment step then opens Razorpay Checkout instead of the UPI QR. Payments are checked on the server, and the registration is confirmed straight away, with no screenshot and no manual check. If the keys are empty, the site goes back to the UPI QR + UTR + screenshot flow above.
+Two ways, both from **Registrations**:
+- **One at a time:** open a verified registration and click **Send Bhojan Pass** (or **Email pass again**).
+- **Broadcast:** the *Bhojan Pass* panel at the top shows how many verified participants have been emailed. **Broadcast to N** emails everyone verified who hasn't received it yet, about one per second; you can leave the page while it runs. Failed sends are listed and retried by broadcasting again, which never re-sends to people who already got theirs.
 
-Also recommended: in Razorpay Dashboard → Webhooks, add `https://<your-site>/api/pay/webhook` with the events `payment.captured` and `order.paid`, then put the webhook secret in `RAZORPAY_WEBHOOK_SECRET`. With the webhook in place, a registration is still saved if the participant closes the page right after paying.
-
-UPI must be switched on for your Razorpay account (Dashboard → Account & Settings → Payment methods). If it is off, Checkout shows only cards, net banking and wallets.
-
-Use `rzp_test_…` keys while testing (test card `4111 1111 1111 1111`, any future expiry, any CVV; or UPI ID `success@razorpay`). Switch to `rzp_live_…` keys before going live.
-
-## WhatsApp Bhojan Pass with AiSensy (optional)
-
-When a registration is confirmed (automatically after a Razorpay payment, or when an admin clicks **Verify payment**), the site sends a **Bhojan Pass** on WhatsApp: a QR code image plus a link to `/pass/<code>`. Scanning the QR code at the food counter opens that page, which shows **VALID** with the person's name and registration number. Participants can also open their pass from **Check status**, and admins can resend it from the registration drawer.
-
-Setup in AiSensy:
-1. Finish WhatsApp Business (WABA) verification in AiSensy. Until then AiSensy rejects every send with "WABA is not verified".
-2. Create a template (category **Utility**) with an **Image** header and three body variables, for example:
-   ```
-   નમસ્તે {{1}},
-   ABRSM ગુજરાત રાજ્ય સંમેલન ૨૦૨૬ માટે આપનું રજિસ્ટ્રેશન કન્ફર્મ થયું છે.
-   નોંધણી નંબર: {{2}}
-   ભોજન સમયે ઉપરનો QR કોડ કાઉન્ટર પર બતાવો. ભોજન પાસ: {{3}}
-   તારીખ: ૨૦ ડિસેમ્બર ૨૦૨૬, રવિવાર · ગુજરાત યુનિવર્સિટી કન્વેન્શન સેન્ટર, અમદાવાદ
-   ```
-   `{{1}}` = participant name, `{{2}}` = registration number, `{{3}}` = pass link. Keep this order.
-3. Once Meta approves the template, create an **API campaign** that uses it, set it **Live**, and put its exact name in `AISENSY_CAMPAIGN_NAME`.
-4. Set `AISENSY_API_KEY` (AiSensy → Manage → API Key) and `PUBLIC_URL` (the site's public https address). AiSensy downloads the QR image from `PUBLIC_URL`, so this only works on the deployed site, not on `localhost`.
-
-If any of the three settings is empty, nothing is sent, but passes still work through **Check status**. Failed sends are shown in the admin drawer ("Last attempt failed: …").
+The table's *Bhojan Pass* column shows who has been emailed. Without email set up, **Send Bhojan Pass** still puts the pass in the participant's account (the broadcast needs email). A pass link or QR only works once the pass has been sent, and shows **NOT VALID** if the registration is later moved out of *verified*.
 
 ## Email with Resend (optional)
 
 Set `RESEND_API_KEY` in `server/.env` (Resend → API Keys). The site then emails:
 
-- **Registration received**: for UPI registrations waiting for a manual check.
-- **Confirmation + Bhojan Pass**: as soon as a registration is confirmed (straight after a Razorpay payment, or when an admin clicks **Verify payment**). The QR code is inside the email, with a link to `/pass/<code>`. Admins can resend it from the registration drawer.
+- **Registration received**: right after the form is submitted.
+- **Confirmation + Bhojan Pass**: when an organiser sends it (see above). The QR code is inside the email, with a link to `/pass/<code>`.
+- **Password reset**: when a participant uses *Forgot password*.
 - **Rejected**: with the admin's note.
 - **Certificate of participation**: after the conference (see below).
 
@@ -80,7 +71,7 @@ Set `RESEND_API_KEY` in `server/.env` (Resend → API Keys). The site then email
 
 Also check your Resend plan's daily limit (the free plan allows 100 emails a day) before sending certificates to everyone.
 
-Without `RESEND_API_KEY`, the app works normally; use the WhatsApp button for confirmations.
+Without `RESEND_API_KEY`, the app still works, but nothing is emailed: passes only appear in participants' accounts, and *Forgot password* asks people to call the organisers.
 
 ## Certificates
 
@@ -88,7 +79,7 @@ After the conference, go to **Payment & settings → Certificates**:
 1. Add up to three signatories (name and role), click **Save changes**, then **preview the certificate**.
 2. Click **Send certificates**. Every confirmed participant gets an email with their certificate as a PDF, one every second or so, and the page shows progress. If some fail, or the server restarts, click the button again; it only sends to people who haven't received theirs yet.
 
-Once certificates have been sent, participants can also download theirs from **Check status**. A single certificate can be previewed or emailed again from the registration drawer.
+Once certificates have been sent, participants can also download theirs under **My registration**. A single certificate can be previewed or emailed again from the registration drawer.
 
 Certificates are drawn on the server with the bundled Noto Serif fonts (`server/assets/fonts`, SIL Open Font License), so names in Gujarati come out correctly. On Linux, the fonts are picked up through `fonts.conf` in that folder. On macOS, local previews use the system fonts instead and look slightly different.
 
@@ -98,10 +89,10 @@ Any Node host (Render, Railway, a VPS):
 
 - Build command: `npm install && npm run build`
 - Start command: `npm start`
-- Environment: `MONGODB_URI` (MongoDB Atlas), `ADMIN_PASSWORD`, `JWT_SECRET`, `PUBLIC_URL`, optional `RESEND_API_KEY` / `MAIL_FROM`, `RAZORPAY_*`, `AISENSY_*`
+- Environment: `MONGODB_URI` (MongoDB Atlas), `ADMIN_PASSWORD`, `JWT_SECRET`, `PUBLIC_URL`, optional `RESEND_API_KEY` / `MAIL_FROM`
 
 The Express server serves the built React app and the API from the same URL. Uploaded screenshots are kept in MongoDB, so no persistent disk is needed.
 
 ### Frontend on Vercel, API on Render
 
-If the site is served from Vercel (project root directory `client`), `client/vercel.json` forwards `/api/*` to the Render service and sends every other path to the React app. Change the Render address in that file if your service URL is different. Set `PUBLIC_URL` on Render to the Vercel address (e.g. `https://akhil-bharti.vercel.app`) so pass and certificate links point there, and point the Razorpay webhook straight at Render (`https://<service>.onrender.com/api/pay/webhook`).
+If the site is served from Vercel (project root directory `client`), `client/vercel.json` forwards `/api/*` to the Render service and sends every other path to the React app. Change the Render address in that file if your service URL is different. Set `PUBLIC_URL` on Render to the Vercel address (e.g. `https://akhil-bharti.vercel.app`) so pass, certificate and password-reset links point there.

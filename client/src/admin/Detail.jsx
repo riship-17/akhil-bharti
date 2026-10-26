@@ -1,13 +1,6 @@
 import { useEffect, useState } from "react";
-import { CADRES, confirmationText, designationText, labelOf } from "../../../shared/constants.js";
+import { CADRES, designationText, labelOf } from "../../../shared/constants.js";
 import { when } from "./Registrations.jsx";
-
-function whatsappText(r) {
-  if (r.status === "verified") return confirmationText(r);
-  if (r.status === "rejected")
-    return `નમસ્તે ${r.fullName},\n\nABRSM ગુજરાત રાજ્ય સંમેલન ૨૦૨૬ – આપની નોંધણી (${r.regNo}) માટેની ચુકવણી ચકાસી શકાઈ નથી.${r.adminNote ? `\n\n${r.adminNote}` : ""}\n\nWe could not verify the payment for your registration ${r.regNo}. Please reply to this message so we can help.`;
-  return `નમસ્તે ${r.fullName},\n\nABRSM ગુજરાત રાજ્ય સંમેલન ૨૦૨૬ – આપની નોંધણી (${r.regNo}) અમને મળી ગઈ છે. ચુકવણીની ચકાસણી ચાલુ છે.`;
-}
 
 export default function Detail({ reg: r, call, token, onClose, onChanged }) {
   const [note, setNote] = useState(r.adminNote || "");
@@ -35,13 +28,10 @@ export default function Detail({ reg: r, call, token, onClose, onChanged }) {
     setBusy(status);
     setMsg("");
     try {
-      const { registration, emailed, whatsapp } = await call(`/admin/registrations/${r._id}`, { method: "PATCH", body: { status, adminNote: note } });
+      const { registration, emailed } = await call(`/admin/registrations/${r._id}`, { method: "PATCH", body: { status, adminNote: note } });
       onChanged(registration);
-      if (status === "verified") {
-        const pass = whatsapp?.sent ? " Bhojan Pass sent on WhatsApp." : whatsapp?.error ? ` Bhojan Pass not sent: ${whatsapp.error}` : "";
-        setMsg((emailed ? "Verified. Confirmation email sent." : "Verified.") + pass);
-      }
-      else if (status === "rejected") setMsg(emailed ? "Rejected and the participant was emailed." : "Rejected. Let the participant know on WhatsApp.");
+      if (status === "verified") setMsg("Payment verified. Now send the Bhojan Pass (or include them in a broadcast from the Registrations page).");
+      else if (status === "rejected") setMsg(emailed ? "Rejected and the participant was emailed." : "Rejected. The email could not be sent, so let the participant know by phone.");
       else setMsg("Moved back to pending.");
     } catch (err) {
       setMsg(err.message);
@@ -74,27 +64,13 @@ export default function Detail({ reg: r, call, token, onClose, onChanged }) {
     }
   }
 
-  async function sendPass() {
-    setBusy("pass");
-    setMsg("");
-    try {
-      const { registration } = await call(`/admin/registrations/${r._id}/pass`, { method: "POST" });
-      onChanged(registration);
-      setMsg("Bhojan Pass sent on WhatsApp.");
-    } catch (err) {
-      setMsg(err.message);
-    } finally {
-      setBusy("");
-    }
-  }
-
   async function postAction(path, kind, done) {
     setBusy(kind);
     setMsg("");
     try {
-      const { registration } = await call(`/admin/registrations/${r._id}/${path}`, { method: "POST" });
-      onChanged(registration);
-      setMsg(done);
+      const res = await call(`/admin/registrations/${r._id}/${path}`, { method: "POST" });
+      onChanged(res.registration);
+      setMsg(typeof done === "function" ? done(res) : done);
     } catch (err) {
       setMsg(err.message);
     } finally {
@@ -102,14 +78,21 @@ export default function Detail({ reg: r, call, token, onClose, onChanged }) {
     }
   }
 
+  const sendPass = () =>
+    postAction("pass", "pass", ({ emailed, error }) =>
+      emailed
+        ? `Bhojan Pass emailed to ${r.email}.`
+        : `The pass is now in the participant's account, but the email was not sent: ${error || "unknown error"}`
+    );
+  const passLabel = busy === "pass" ? "Sending…" : r.pass?.emailedAt ? "Email pass again" : "Send Bhojan Pass";
+
   const certificateUrl = `/api/admin/registrations/${r._id}/certificate?t=${encodeURIComponent(token)}`;
   const receiptUrl = `/api/admin/registrations/${r._id}/receipt?t=${encodeURIComponent(token)}`;
   const isPdf = r.receipt?.contentType === "application/pdf";
-  const wa = `https://wa.me/91${r.mobile}?text=${encodeURIComponent(whatsappText({ ...r, adminNote: note }))}`;
 
   const rows = [
     ["Email", r.email],
-    ["Mobile / WhatsApp", r.mobile],
+    ["Mobile", r.mobile],
     ["Alternative contact", r.altContact],
     ["Cadre", labelOf(CADRES, r.cadre)],
     ["District", r.district],
@@ -135,66 +118,34 @@ export default function Detail({ reg: r, call, token, onClose, onChanged }) {
         </div>
 
         <div className="drawer-body">
-          {r.paymentMethod === "razorpay" ? (
-            <section className="pay-check">
-              <div className="pay-facts">
-                <div><span>Amount</span><b>₹{r.amount}</b></div>
-                <div><span>Razorpay payment ID</span><b className="mono">{r.utr}</b></div>
-              </div>
-              <p className="muted small">
-                Paid online through Razorpay and checked automatically.{" "}
-                <a href={`https://dashboard.razorpay.com/app/payments/${r.utr}`} target="_blank" rel="noopener">Open in Razorpay dashboard</a>
-              </p>
-            </section>
-          ) : (
-            <section className="pay-check">
-              <div className="pay-facts">
-                <div><span>Amount</span><b>₹{r.amount}</b></div>
-                <div><span>UTR / Transaction ID</span><b className="mono">{r.utr}</b></div>
-              </div>
-              <a href={receiptUrl} target="_blank" rel="noopener" className="receipt">
-                {isPdf ? <div className="file-icon big">PDF<small>Open receipt</small></div> : <img src={receiptUrl} alt="Payment screenshot" />}
-              </a>
-              <p className="muted small">Match the UTR and amount with your bank / UPI statement before verifying. Click the receipt to open it full size.</p>
-            </section>
-          )}
+          <section className="pay-check">
+            <div className="pay-facts">
+              <div><span>Amount</span><b>₹{r.amount}</b></div>
+              <div><span>UTR / Transaction ID</span><b className="mono">{r.utr}</b></div>
+            </div>
+            <a href={receiptUrl} target="_blank" rel="noopener" className="receipt">
+              {isPdf ? <div className="file-icon big">PDF<small>Open receipt</small></div> : <img src={receiptUrl} alt="Payment screenshot" />}
+            </a>
+            <p className="muted small">Match the UTR and amount with your bank / UPI statement before verifying. Click the screenshot to open it full size.</p>
+          </section>
 
           {r.status === "verified" && (
             <section className="pay-check">
               <div className="pay-facts">
                 <div>
-                  <span>Bhojan Pass (WhatsApp)</span>
-                  <b>{r.pass?.sentAt ? `Sent ${when(r.pass.sentAt)}` : "Not sent yet"}</b>
-                </div>
-              </div>
-              {r.pass?.lastError && <p className="muted small">Last attempt failed: {r.pass.lastError}</p>}
-              <p className="muted small">
-                <button className="link" onClick={sendPass} disabled={!!busy}>
-                  {busy === "pass" ? "Sending…" : r.pass?.sentAt ? "Send Bhojan Pass again" : "Send Bhojan Pass on WhatsApp"}
-                </button>
-                {r.pass?.token && <> · <a href={`/pass/${r.pass.token}`} target="_blank" rel="noopener">Open pass</a></>}
-              </p>
-            </section>
-          )}
-
-          {r.status === "verified" && (
-            <section className="pay-check">
-              <div className="pay-facts">
-                <div>
-                  <span>Confirmation + Bhojan Pass (email)</span>
-                  <b>{r.confirmationEmailedAt ? `Sent ${when(r.confirmationEmailedAt)}` : "Not sent"}</b>
+                  <span>Bhojan Pass</span>
+                  <b>{r.pass?.emailedAt ? `Emailed ${when(r.pass.emailedAt)}` : r.pass?.issuedAt ? "In account, not emailed" : "Not sent yet"}</b>
                 </div>
                 <div>
                   <span>Certificate (email)</span>
                   <b>{r.certificate?.emailedAt ? `Sent ${when(r.certificate.emailedAt)}` : "Not sent"}</b>
                 </div>
               </div>
+              {r.pass?.lastError && !r.pass?.emailedAt && <p className="muted small">Last pass email failed: {r.pass.lastError}</p>}
               {r.certificate?.lastError && !r.certificate?.emailedAt && <p className="muted small">Last certificate attempt failed: {r.certificate.lastError}</p>}
               <p className="muted small">
-                <button className="link" onClick={() => postAction("email", "email", "Confirmation email with the Bhojan Pass sent.")} disabled={!!busy}>
-                  {busy === "email" ? "Sending…" : r.confirmationEmailedAt ? "Email pass again" : "Email confirmation + pass"}
-                </button>
-                {" · "}
+                {r.pass?.emailedAt && <><button className="link" onClick={sendPass} disabled={!!busy}>{passLabel}</button>{" · "}</>}
+                {r.pass?.issuedAt && <><a href={`/pass/${r.pass.token}`} target="_blank" rel="noopener">Open pass</a>{" · "}</>}
                 <a href={certificateUrl} target="_blank" rel="noopener">Preview certificate</a>
                 {" · "}
                 <button className="link" onClick={() => postAction("certificate", "certificate", "Certificate emailed.")} disabled={!!busy}>
@@ -223,15 +174,16 @@ export default function Detail({ reg: r, call, token, onClose, onChanged }) {
           {r.status !== "verified" && (
             <button className="btn green" onClick={() => setStatus("verified")} disabled={!!busy}>{busy === "verified" ? "Verifying…" : "Verify payment"}</button>
           )}
+          {r.status === "verified" && !r.pass?.emailedAt && (
+            <button className="btn green" onClick={sendPass} disabled={!!busy}>{passLabel}</button>
+          )}
           {r.status !== "rejected" && (
             <button className="btn ghost danger" onClick={() => setStatus("rejected")} disabled={!!busy}>{busy === "rejected" ? "Rejecting…" : "Reject"}</button>
           )}
           {r.status !== "pending" && (
             <button className="btn ghost" onClick={() => setStatus("pending")} disabled={!!busy}>Mark pending</button>
           )}
-          <a className="btn wa" href={wa} target="_blank" rel="noopener">
-            {r.status === "verified" ? "Send confirmation on WhatsApp" : "Message on WhatsApp"}
-          </a>
+          <a className="btn ghost" href={`tel:+91${r.mobile}`}>Call</a>
           <div className="spacer" />
           {confirmDelete ? (
             <button className="btn danger-solid small" onClick={remove} disabled={!!busy}>Confirm delete</button>

@@ -1,10 +1,27 @@
 import mongoose from "mongoose";
-import { CADRES, DESIGNATIONS, DISTRICTS, FEE, PAYMENT_METHODS, STATUSES } from "../../shared/constants.js";
+import { CADRES, DESIGNATIONS, DISTRICTS, FEE, STATUSES, UPI } from "../../shared/constants.js";
 
 const values = (list) => list.map((x) => x.value);
 
+// Participant login. One account registers one participant.
+const userSchema = new mongoose.Schema(
+  {
+    name: { type: String, required: true, trim: true },
+    email: { type: String, required: true, unique: true, lowercase: true, trim: true },
+    mobile: { type: String, required: true },
+    passwordHash: { type: String, required: true },
+    // Sessions issued before this are no longer accepted (set when the password is reset).
+    passwordChangedAt: Date,
+    reset: { tokenHash: String, expiresAt: Date },
+  },
+  { timestamps: true }
+);
+
+export const User = mongoose.model("User", userSchema);
+
 const registrationSchema = new mongoose.Schema(
   {
+    user: { type: mongoose.Schema.Types.ObjectId, ref: "User", index: true },
     regNo: { type: String, required: true, unique: true },
     email: { type: String, required: true, lowercase: true, trim: true, index: true },
     fullName: { type: String, required: true, trim: true },
@@ -20,22 +37,22 @@ const registrationSchema = new mongoose.Schema(
     altContact: String,
 
     amount: { type: Number, default: FEE },
-    paymentMethod: { type: String, enum: PAYMENT_METHODS, default: "upi" },
-    // UPI: the UTR typed by the participant. Razorpay: the payment ID (pay_…).
+    // The UPI reference (UTR) typed by the participant.
     utr: { type: String, required: true, unique: true },
-    razorpayOrderId: { type: String, unique: true, sparse: true },
+    // Payment screenshot, shrunk before saving (see lib/files.js).
     receipt: {
-      fileId: { type: mongoose.Schema.Types.ObjectId, required: function () { return this.paymentMethod === "upi"; } },
+      fileId: { type: mongoose.Schema.Types.ObjectId, required: true },
       filename: String,
       contentType: String,
       size: Number,
     },
 
-    // Bhojan Pass: the token is the secret part of the pass link / QR code.
+    // Bhojan Pass: the token is the secret part of the pass link / QR code. Admins send the pass after verifying
+    // the payment; from then on (issuedAt) it shows in the participant's account and scans as valid.
     pass: {
       token: { type: String, unique: true, sparse: true },
-      sentAt: Date,
-      sendCount: { type: Number, default: 0 },
+      issuedAt: Date,
+      emailedAt: Date,
       lastError: String,
     },
 
@@ -48,25 +65,11 @@ const registrationSchema = new mongoose.Schema(
     status: { type: String, enum: STATUSES, default: "pending", index: true },
     adminNote: String,
     reviewedAt: Date,
-    confirmationEmailedAt: Date,
   },
   { timestamps: true }
 );
 
 export const Registration = mongoose.model("Registration", registrationSchema);
-
-// Participant details held between creating a Razorpay order and the payment succeeding.
-export const PaymentOrder = mongoose.model(
-  "PaymentOrder",
-  new mongoose.Schema(
-    {
-      orderId: { type: String, required: true, unique: true },
-      details: { type: Object, required: true },
-      createdAt: { type: Date, default: Date.now, expires: 7 * 24 * 3600 },
-    },
-    { versionKey: false }
-  )
-);
 
 const Counter = mongoose.model(
   "Counter",
@@ -82,8 +85,8 @@ const settingsSchema = new mongoose.Schema(
   {
     key: { type: String, default: "main", unique: true },
     registrationOpen: { type: Boolean, default: true },
-    upiId: { type: String, default: "" },
-    payeeName: { type: String, default: "ABRSM Gujarat" },
+    upiId: { type: String, default: UPI.id },
+    payeeName: { type: String, default: UPI.payee },
     accountName: { type: String, default: "" },
     bankName: { type: String, default: "" },
     accountNo: { type: String, default: "" },

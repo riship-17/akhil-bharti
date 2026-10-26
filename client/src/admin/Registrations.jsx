@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { DISTRICTS } from "../../../shared/constants.js";
 import Detail from "./Detail.jsx";
 
@@ -69,8 +69,10 @@ export default function Registrations({ call, token }) {
       </div>
 
       {stats && !stats.mailEnabled && (
-        <p className="admin-hint">Email is not set up, so confirmations are not emailed automatically. Use the WhatsApp button on each registration, or add <code>RESEND_API_KEY</code> to <code>server/.env</code>.</p>
+        <p className="admin-hint">Email is not set up, so Bhojan Passes can't be emailed (sending one still puts it in the participant's account). Add <code>RESEND_API_KEY</code> to <code>server/.env</code> to turn it on.</p>
       )}
+
+      <PassBroadcast call={call} stats={stats} onDone={load} />
 
       <div className="toolbar">
         <div className="tabs" role="tablist">
@@ -104,6 +106,7 @@ export default function Registrations({ call, token }) {
               <th>UTR</th>
               <th>Submitted</th>
               <th>Status</th>
+              <th>Bhojan Pass</th>
             </tr>
           </thead>
           <tbody>
@@ -119,6 +122,12 @@ export default function Registrations({ call, token }) {
                 <td className="mono">{r.utr}</td>
                 <td className="nowrap">{when(r.createdAt)}</td>
                 <td><span className={`chip ${r.status}`}>{r.status}</span></td>
+                <td className="nowrap small">
+                  {r.pass?.emailedAt ? <span title={`Emailed ${when(r.pass.emailedAt)}`}>✓ Emailed</span>
+                    : r.pass?.lastError ? <span className="danger-text">Email failed</span>
+                    : r.pass?.issuedAt ? "In account"
+                    : r.status === "verified" ? <span className="muted">Not sent</span> : ""}
+                </td>
               </tr>
             ))}
           </tbody>
@@ -148,6 +157,76 @@ export default function Registrations({ call, token }) {
 
       {open && <Detail reg={open} call={call} token={token} onClose={() => setOpenId(null)} onChanged={onChanged} />}
     </div>
+  );
+}
+
+// Emails the Bhojan Pass to every verified participant who hasn't received it yet.
+function PassBroadcast({ call, stats, onDone }) {
+  const [info, setInfo] = useState(null);
+  const [confirm, setConfirm] = useState(false);
+  const [msg, setMsg] = useState("");
+  const wasRunning = useRef(false);
+
+  useEffect(() => {
+    let timer;
+    const poll = () =>
+      call("/admin/passes")
+        .then((d) => {
+          setInfo(d);
+          if (d.run?.running) timer = setTimeout(poll, 3000);
+        })
+        .catch((e) => setMsg(e.message));
+    poll();
+    return () => clearTimeout(timer);
+  }, [call, stats, info?.run?.startedAt]);
+
+  // Reload the table once a broadcast finishes, so the Bhojan Pass column is up to date.
+  useEffect(() => {
+    const running = Boolean(info?.run?.running);
+    if (wasRunning.current && !running) onDone();
+    wasRunning.current = running;
+  }, [info, onDone]);
+
+  async function broadcast() {
+    setConfirm(false);
+    setMsg("");
+    try {
+      setInfo(await call("/admin/passes/send", { method: "POST" }));
+    } catch (err) {
+      setMsg(err.message);
+    }
+  }
+
+  if (!info) return null;
+  const run = info.run;
+  const remaining = info.verified - info.sent;
+
+  return (
+    <section className="panel broadcast">
+      <div className="panel-row">
+        <div>
+          <h2>Bhojan Pass</h2>
+          <p>
+            <b>{info.sent}</b> of <b>{info.verified}</b> verified participants have been emailed their pass.
+            {info.failed > 0 && <> <b>{info.failed}</b> failed — broadcast again to retry them.</>}
+          </p>
+          {run?.running && <p className="muted small">Sending… {run.sent + run.failed} of {run.total} done. You can leave this page; it keeps going.</p>}
+          {run && !run.running && run.total > 0 && <p className="muted small">Last broadcast: {run.sent} sent, {run.failed} failed.{run.error && ` Stopped: ${run.error}`}</p>}
+          <p className="muted small">To send one pass, open a verified registration and click <i>Send Bhojan Pass</i>. A broadcast only goes to people who haven't been emailed yet.</p>
+        </div>
+        {confirm ? (
+          <div className="broadcast-confirm">
+            <button type="button" className="btn green" onClick={broadcast}>Yes, email {remaining} pass{remaining === 1 ? "" : "es"}</button>
+            <button type="button" className="link" onClick={() => setConfirm(false)}>Cancel</button>
+          </div>
+        ) : (
+          <button type="button" className="btn" disabled={!info.mailEnabled || run?.running || remaining === 0} onClick={() => setConfirm(true)}>
+            {run?.running ? "Sending…" : remaining === 0 ? "All passes sent" : `Broadcast to ${remaining}`}
+          </button>
+        )}
+      </div>
+      {msg && <p className="admin-msg">{msg}</p>}
+    </section>
   );
 }
 

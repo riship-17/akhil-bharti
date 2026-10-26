@@ -1,10 +1,17 @@
 import mongoose from "mongoose";
 import multer from "multer";
-import { MAX_RECEIPT_BYTES, RECEIPT_TYPES } from "../../../shared/validate.js";
+import { MAX_PDF_BYTES, MAX_RECEIPT_BYTES, RECEIPT_TYPES } from "../../../shared/validate.js";
 
 // Files live in MongoDB (GridFS), so the app runs on hosts without persistent disk.
 let bucket;
 const getBucket = () => (bucket ??= new mongoose.mongo.GridFSBucket(mongoose.connection.db, { bucketName: "uploads" }));
+
+function badFile(field, message) {
+  const err = new Error(message);
+  err.status = 400;
+  err.field = field;
+  return err;
+}
 
 export function uploader(types = RECEIPT_TYPES) {
   return multer({
@@ -12,12 +19,33 @@ export function uploader(types = RECEIPT_TYPES) {
     limits: { fileSize: MAX_RECEIPT_BYTES, files: 1, fields: 30 },
     fileFilter: (req, file, cb) => {
       if (types.includes(file.mimetype)) return cb(null, true);
-      const err = new Error("Upload an image (JPG / PNG) or a PDF file.");
-      err.status = 400;
-      err.field = file.fieldname;
-      cb(err);
+      cb(badFile(file.fieldname, "Upload an image (JPG / PNG) or a PDF file."));
     },
   });
+}
+
+// Payment screenshots are stored in the database, so they are re-encoded as WebP, at most 900 px wide,
+// before saving: a 1–3 MB phone screenshot becomes roughly 40–120 KB and the UTR stays readable.
+// PDFs can't be shrunk this way, so they are only accepted up to MAX_PDF_BYTES.
+export async function shrinkReceipt(file) {
+  if (file.mimetype === "application/pdf") {
+    if (file.size > MAX_PDF_BYTES) throw badFile(file.fieldname, "PDF is too large (max 2 MB). Upload a screenshot image instead.");
+    return file;
+  }
+  // Loaded here rather than at the top: certificate.js has to set up fonts before sharp is first imported.
+  const { default: sharp } = await import("sharp");
+  let buffer;
+  try {
+    buffer = await sharp(file.buffer, { limitInputPixels: 50e6 })
+      .rotate() // respect the phone's EXIF orientation
+      .resize({ width: 900, height: 2400, fit: "inside", withoutEnlargement: true })
+      .webp({ quality: 62, effort: 4 })
+      .toBuffer();
+  } catch {
+    throw badFile(file.fieldname, "Could not read this image. Upload the screenshot as a JPG or PNG.");
+  }
+  const name = (file.originalname || "receipt").replace(/\.[^.]*$/, "");
+  return { ...file, buffer, mimetype: "image/webp", size: buffer.length, originalname: `${name}.webp` };
 }
 
 export function saveFile(file, metadata = {}) {
