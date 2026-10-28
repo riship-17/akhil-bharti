@@ -102,6 +102,7 @@ router.get("/me", requireUser, async (req, res) => {
       note: r.status === "rejected" ? r.adminNote || "" : "",
       passToken: confirmed && r.pass?.issuedAt ? r.pass.token : undefined,
       passEmailedAt: confirmed ? r.pass?.emailedAt : undefined,
+      receiptUrl: confirmed && r.pass?.issuedAt ? `/api/pass/${r.pass.token}/receipt.pdf` : undefined,
       certificateUrl: confirmed && settings.certificate?.releasedAt && r.pass?.token ? `/api/certificate/${r.pass.token}` : undefined,
     },
   });

@@ -88,6 +88,7 @@ export default function Detail({ reg: r, call, token, onClose, onChanged }) {
 
   const certificateUrl = `/api/admin/registrations/${r._id}/certificate?t=${encodeURIComponent(token)}`;
   const receiptUrl = `/api/admin/registrations/${r._id}/receipt?t=${encodeURIComponent(token)}`;
+  const feeReceiptUrl = `/api/admin/registrations/${r._id}/fee-receipt?t=${encodeURIComponent(token)}`;
   const isPdf = r.receipt?.contentType === "application/pdf";
 
   const rows = [
@@ -150,6 +151,8 @@ export default function Detail({ reg: r, call, token, onClose, onChanged }) {
               <p className="muted small">
                 {r.pass?.emailedAt && <><button className="link" onClick={sendPass} disabled={!!busy}>{passLabel}</button>{" · "}</>}
                 {r.pass?.issuedAt && <><a href={`/pass/${r.pass.token}`} target="_blank" rel="noopener">Open pass</a>{" · "}</>}
+                <a href={feeReceiptUrl} target="_blank" rel="noopener">Fee receipt</a>
+                {" · "}
                 <a href={certificateUrl} target="_blank" rel="noopener">Preview certificate</a>
                 {" · "}
                 <button className="link" onClick={() => postAction("certificate", "certificate", "Certificate emailed.")} disabled={!!busy}>

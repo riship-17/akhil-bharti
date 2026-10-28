@@ -6,6 +6,7 @@ import { sendFile } from "../lib/files.js";
 import { mailEnabled } from "../lib/mail.js";
 import { certificateFilename, certificatePdf } from "../lib/certificate.js";
 import { passQrPng } from "../lib/pass.js";
+import { payeeOf, receiptFilename, receiptPdf } from "../lib/receipt.js";
 
 const router = Router();
 
@@ -57,6 +58,18 @@ router.get("/pass/:token/qr.png", passLimit, async (req, res) => {
   if (!r?.pass?.issuedAt) return res.status(404).end();
   res.set({ "Content-Type": "image/png", "Cache-Control": "public, max-age=86400" });
   res.send(await passQrPng(r.pass.token, `${req.protocol}://${req.get("host")}`));
+});
+
+// Fee receipt, linked from the participant's account once the pass is issued.
+router.get("/pass/:token/receipt.pdf", passLimit, async (req, res) => {
+  const r = await findByPass(req.params.token);
+  if (!r?.pass?.issuedAt || r.status !== "verified") return res.status(404).json({ error: "Receipt not found." });
+  res.set({
+    "Content-Type": "application/pdf",
+    "Content-Disposition": `inline; filename="${receiptFilename(r)}"`,
+    "Cache-Control": "private, no-store",
+  });
+  res.send(await receiptPdf(r, payeeOf(await Settings.load())));
 });
 
 // ---- Certificate (after the conference, once admins have released certificates) ----

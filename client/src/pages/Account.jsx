@@ -13,7 +13,7 @@ const LABELS = {
 
 const when = (d) => new Date(d).toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit", timeZone: "Asia/Kolkata" });
 
-// "My registration": the logged-in participant's status, Bhojan Pass and certificate.
+// "My registration": the logged-in participant's status, Bhojan Pass, fee receipt and certificate.
 export default function Account() {
   const { me, user, refresh, logout } = useAuth();
   const config = useConfig();
@@ -96,6 +96,12 @@ export default function Account() {
                     View Bhojan Pass
                   </Link>
                 </>
+              )}
+              {r.receiptUrl && (
+                <a href={r.receiptUrl} target="_blank" rel="noopener" className={`${secondaryButton} w-full`}>
+                  <Icon name="receipt_long" className="text-[22px]" />
+                  Download Fee Receipt
+                </a>
               )}
               {r.certificateUrl && (
                 <a href={r.certificateUrl} target="_blank" rel="noopener" className={`${secondaryButton} w-full`}>

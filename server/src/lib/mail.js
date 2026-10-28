@@ -1,7 +1,8 @@
 import { EVENT, FEE, rupees } from "../../../shared/constants.js";
-import { Registration } from "../models.js";
+import { Registration, Settings } from "../models.js";
 import { certificateFilename, certificatePdf } from "./certificate.js";
 import { passQrPng, passUrl, siteUrl } from "./pass.js";
+import { payeeOf, receiptFilename, receiptPdf } from "./receipt.js";
 
 // Email through Resend (https://resend.com). MAIL_FROM must use a domain verified in Resend;
 // onboarding@resend.dev only delivers to the Resend account owner's own address (fine for testing).
@@ -61,14 +62,14 @@ const templates = {
       <table style="border-collapse:collapse;margin:12px 0">${row("Registration No", r.regNo)}${row("Bhojan Pass fee", rupees(FEE))}${r.donation ? row("Sahay Shulk (helping fund)", rupees(r.donation)) : ""}${row("Total paid", rupees(r.amount))}</table>`),
   }),
 
-  // Bhojan Pass, sent by admins after verifying the payment. The QR code is embedded in the email (cid:)
-  // so it shows without loading remote images.
-  pass: async (r, site) => ({
+  // Bhojan Pass, sent by admins after verifying the payment, with the fee receipt attached as a PDF.
+  // The QR code is embedded in the email (cid:) so it shows without loading remote images.
+  pass: async (r, site, { payee } = {}) => ({
     subject: `Registration confirmed + Bhojan Pass – ${r.regNo} | ABRSM State Conference 2026`,
     html: layout(`
       <p>Dear ${esc(r.fullName)},</p>
       <p>Thank you for registering for the ABRSM Gujarat State Conference 2026. Your payment is confirmed.</p>
-      <table style="border-collapse:collapse;margin:12px 0">${row("Registration No", r.regNo)}${row("Date", EVENT.dateEn)}${row("Venue", EVENT.venueEn)}</table>
+      <table style="border-collapse:collapse;margin:12px 0">${row("Registration No", r.regNo)}${row("Amount paid", rupees(r.amount))}${row("Date", EVENT.dateEn)}${row("Venue", EVENT.venueEn)}</table>
       <div style="border:2px solid #a4380f;border-radius:12px;padding:20px;text-align:center;margin:20px 0">
         <div style="font-weight:bold;font-size:18px;color:#a4380f">Bhojan Pass</div>
         <img src="cid:${PASS_QR_ID}" width="220" height="220" alt="Bhojan Pass QR code" style="display:block;margin:12px auto">
@@ -76,13 +77,21 @@ const templates = {
         <p style="margin:8px 0 16px">Show this QR code at the food counter.</p>
         ${button(passUrl(r.pass.token, site), "Open Bhojan Pass")}
       </div>
-      <p style="color:#6b625b;font-size:13px">Please keep this email. You can also open the pass any time by logging in to the website. Your certificate of participation will be emailed to you after the conference.</p>`),
-    attachments: [{
-      filename: `${r.regNo}-bhojan-pass.png`,
-      content: (await passQrPng(r.pass.token, site)).toString("base64"),
-      content_type: "image/png",
-      content_id: PASS_QR_ID,
-    }],
+      <p>The receipt for your fees is attached to this email as a PDF.</p>
+      <p style="color:#6b625b;font-size:13px">Please keep this email. You can also open the pass and download the receipt any time by logging in to the website. Your certificate of participation will be emailed to you after the conference.</p>`),
+    attachments: [
+      {
+        filename: `${r.regNo}-bhojan-pass.png`,
+        content: (await passQrPng(r.pass.token, site)).toString("base64"),
+        content_type: "image/png",
+        content_id: PASS_QR_ID,
+      },
+      {
+        filename: receiptFilename(r),
+        content: (await receiptPdf(r, payee)).toString("base64"),
+        content_type: "application/pdf",
+      },
+    ],
   }),
 
   rejected: (r) => ({
@@ -134,7 +143,7 @@ export async function notify(kind, to, { origin, ...extra } = {}) {
   }
 }
 
-// Issues the Bhojan Pass (it then shows in the participant's account) and emails it.
+// Issues the Bhojan Pass (it then shows in the participant's account) and emails it with the fee receipt.
 // Records the result on the registration so a broadcast can carry on where it stopped.
 export async function sendPass(reg, origin) {
   const issuedAt = reg.pass?.issuedAt || new Date();
@@ -144,7 +153,8 @@ export async function sendPass(reg, origin) {
   }
   if (!mailEnabled) return { sent: false, error: "Email is not set up on the server (RESEND_API_KEY)." };
   try {
-    const { subject, html, attachments } = await templates.pass(reg, siteUrl(origin));
+    const payee = payeeOf(await Settings.load());
+    const { subject, html, attachments } = await templates.pass(reg, siteUrl(origin), { payee });
     await send({ to: [reg.email], subject, html, attachments });
     const emailedAt = new Date();
     reg.set("pass.emailedAt", emailedAt);

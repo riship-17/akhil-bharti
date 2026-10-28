@@ -8,6 +8,7 @@ import { deleteFile, saveFile, sendFile, uploader } from "../lib/files.js";
 import { mailEnabled, notify, sendCertificate, sendPass } from "../lib/mail.js";
 import { certificateFilename, certificatePdf } from "../lib/certificate.js";
 import { newPassToken } from "../lib/pass.js";
+import { payeeOf, receiptFilename, receiptPdf } from "../lib/receipt.js";
 import { requireAdmin, signToken } from "../lib/auth.js";
 
 const router = Router();
@@ -132,6 +133,15 @@ router.post("/registrations/:id/pass", async (req, res) => {
   await ensurePassToken(r);
   const result = await sendPass(r, originOf(req));
   res.json({ registration: await Registration.findById(r._id), emailed: result.sent, error: result.error });
+});
+
+// The fee receipt PDF that goes out with the Bhojan Pass.
+router.get("/registrations/:id/fee-receipt", async (req, res) => {
+  const r = await findReg(req, res);
+  if (!r) return;
+  if (r.status !== "verified") return res.status(400).json({ error: "The fee receipt is issued once the payment is verified." });
+  res.set({ "Content-Type": "application/pdf", "Content-Disposition": `inline; filename="${receiptFilename(r)}"` });
+  res.send(await receiptPdf(r, payeeOf(await Settings.load())));
 });
 
 router.get("/registrations/:id/certificate", async (req, res) => {
