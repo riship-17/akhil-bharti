@@ -23,6 +23,8 @@ router.get("/config", async (req, res) => {
     contacts: s.contacts,
     qrUrl: s.qr?.fileId ? `/api/qr?v=${s.qr.fileId}` : null,
     mailEnabled,
+    // Commit the backend is running (set by Render), to check that a deploy went out.
+    version: process.env.RENDER_GIT_COMMIT?.slice(0, 7),
   });
 });
 

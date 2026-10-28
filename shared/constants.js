@@ -45,8 +45,8 @@ export const DISTRICTS = [
   ["Valsad"],
 ].map(([en]) => ({ value: en, en }));
 
-// University units of ABRSM Gujarat, in the committee's order. College cadre members pick the university
-// their college is affiliated to.
+// University units of ABRSM Gujarat, listed alphabetically with Other last. College cadre members pick the
+// university their college is affiliated to.
 export const UNIVERSITIES = [
   "M. S. University, Vadodara",
   "Birsa Munda Tribal University, Rajpipla",
@@ -78,7 +78,10 @@ export const UNIVERSITIES = [
   "Ayurved University, Jamnagar",
   "Children's Research University, Gandhinagar",
   "Kaushalya – The Skill University, Ahmedabad",
-].map((en) => ({ value: en, en })).concat({ value: "other", en: "Other" });
+]
+  .sort((a, b) => a.localeCompare(b, "en"))
+  .map((en) => ({ value: en, en }))
+  .concat({ value: "other", en: "Other" });
 
 export const STATUSES = ["pending", "verified", "rejected"];
 
