@@ -1,5 +1,5 @@
 import mongoose from "mongoose";
-import { CADRES, DESIGNATIONS, DISTRICTS, FEE, STATUSES, UPI } from "../../shared/constants.js";
+import { CADRES, DESIGNATIONS, DISTRICTS, FEE, STATUSES, UNIVERSITIES, UPI } from "../../shared/constants.js";
 
 const values = (list) => list.map((x) => x.value);
 
@@ -27,6 +27,12 @@ const registrationSchema = new mongoose.Schema(
     fullName: { type: String, required: true, trim: true },
     cadre: { type: String, required: true, enum: values(CADRES) },
     district: { type: String, required: true, enum: values(DISTRICTS) },
+    // University and college / department are checked in shared/validate.js; they are not required here
+    // because registrations made before they were added don't have them.
+    university: { type: String, enum: values(UNIVERSITIES) },
+    universityOther: String,
+    department: String,
+    // Full address of the college / department.
     institution: { type: String, required: true },
     designation: { type: String, required: true, enum: values(DESIGNATIONS) },
     designationOther: String,

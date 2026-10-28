@@ -99,7 +99,7 @@ export default function Registrations({ call, token }) {
           <thead>
             <tr>
               <th>Reg no.</th>
-              <th>Name &amp; institution</th>
+              <th>Name &amp; college</th>
               <th>District</th>
               <th>Mobile</th>
               <th>Amount</th>
@@ -114,7 +114,7 @@ export default function Registrations({ call, token }) {
                 <td className="mono">{r.regNo}</td>
                 <td>
                   <b>{r.fullName}</b>
-                  <span className="sub-line">{r.institution.split("\n")[0]}</span>
+                  <span className="sub-line">{r.department || r.institution.split("\n")[0]}</span>
                 </td>
                 <td>{r.district}</td>
                 <td className="mono">{r.mobile}</td>

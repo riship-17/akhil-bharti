@@ -37,7 +37,7 @@ function signatureBlock(x, { name, role }) {
 export function certificateSvg(r, signatories = []) {
   const name = clip(r.fullName, 60);
   const nameSize = name.length > 40 ? 58 : name.length > 28 ? 68 : 80;
-  const subtitle = [designationText(r), institutionName(r.institution)].filter(Boolean).join(", ");
+  const subtitle = [designationText(r), r.department ? clip(r.department, 80) : institutionName(r.institution)].filter(Boolean).join(", ");
   const signs = (signatories.length ? signatories : [{ name: "Organising Committee", role: EVENT.titleEn }]).slice(0, 3);
   const step = W / (signs.length + 1);
 

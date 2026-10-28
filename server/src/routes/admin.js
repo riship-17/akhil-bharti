@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import { Router } from "express";
 import rateLimit from "express-rate-limit";
 import mongoose from "mongoose";
-import { CADRES, FEE, STATUSES, UPI, designationText, labelOf } from "../../../shared/constants.js";
+import { CADRES, FEE, STATUSES, UPI, designationText, labelOf, universityText } from "../../../shared/constants.js";
 import { Registration, Settings } from "../models.js";
 import { deleteFile, saveFile, sendFile, uploader } from "../lib/files.js";
 import { mailEnabled, notify, sendCertificate, sendPass } from "../lib/mail.js";
@@ -39,7 +39,7 @@ function buildFilter({ status, district, q }) {
   const term = String(q || "").trim();
   if (term) {
     const rx = new RegExp(escapeRegex(term), "i");
-    filter.$or = ["regNo", "fullName", "email", "mobile", "utr", "institution"].map((f) => ({ [f]: rx }));
+    filter.$or = ["regNo", "fullName", "email", "mobile", "utr", "university", "universityOther", "department", "institution"].map((f) => ({ [f]: rx }));
   }
   return filter;
 }
@@ -273,7 +273,9 @@ router.get("/export.csv", async (req, res) => {
     ["Designation", (r) => designationText(r)],
     ["Field of Study", (r) => r.fieldOfStudy],
     ["Organizational Responsibility", (r) => r.orgResponsibility],
-    ["Institution & Address", (r) => r.institution],
+    ["University", (r) => r.university && universityText(r)],
+    ["College / Department", (r) => r.department],
+    ["Institution Address", (r) => r.institution],
     ["Residential Address", (r) => r.residentialAddress],
     ["Bhojan Pass Fee", () => FEE],
     ["Sahay Shulk", (r) => r.donation || 0],

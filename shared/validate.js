@@ -1,7 +1,8 @@
-import { CADRES, DESIGNATIONS, DISTRICTS, MAX_DONATION, rupees } from "./constants.js";
+import { CADRES, DESIGNATIONS, DISTRICTS, MAX_DONATION, UNIVERSITIES, rupees } from "./constants.js";
 
 export const DETAIL_FIELDS = [
-  "email", "fullName", "cadre", "district", "institution", "designation", "designationOther",
+  "email", "fullName", "cadre", "district", "university", "universityOther", "department", "institution",
+  "designation", "designationOther",
   "fieldOfStudy", "orgResponsibility", "residentialAddress", "mobile", "altContact",
 ];
 
@@ -23,6 +24,7 @@ export function cleanDetails(src = {}) {
   out.email = out.email.toLowerCase();
   out.mobile = normalizeMobile(out.mobile);
   if (out.designation !== "other") out.designationOther = "";
+  if (out.university !== "other") out.universityOther = "";
   return out;
 }
 
@@ -32,7 +34,10 @@ export function validateDetails(d) {
   if (d.fullName.length < 3) e.fullName = "Enter your full name.";
   if (!has(CADRES, d.cadre)) e.cadre = "Select your cadre.";
   if (!has(DISTRICTS, d.district)) e.district = "Select your district.";
-  if (d.institution.length < 5) e.institution = "Enter the institution name and full address.";
+  if (!has(UNIVERSITIES, d.university)) e.university = "Select your university.";
+  else if (d.university === "other" && d.universityOther.length < 3) e.universityOther = "Write the name of your university.";
+  if (d.department.length < 3) e.department = "Enter the name of your college or department.";
+  if (d.institution.length < 5) e.institution = "Enter the full address of your college or department.";
   if (!has(DESIGNATIONS, d.designation)) e.designation = "Select your designation.";
   else if (d.designation === "other" && d.designationOther.length < 2) e.designationOther = "Write your designation.";
   if (d.fieldOfStudy.length < 2) e.fieldOfStudy = "Enter your subject / specialization.";

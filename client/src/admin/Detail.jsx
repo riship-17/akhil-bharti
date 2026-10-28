@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { CADRES, FEE, designationText, labelOf, rupees } from "../../../shared/constants.js";
+import { CADRES, FEE, designationText, labelOf, rupees, universityText } from "../../../shared/constants.js";
 import { when } from "./Registrations.jsx";
 
 export default function Detail({ reg: r, call, token, onClose, onChanged }) {
@@ -99,7 +99,9 @@ export default function Detail({ reg: r, call, token, onClose, onChanged }) {
     ["Designation", designationText(r)],
     ["Field of study", r.fieldOfStudy],
     ["ABRSM responsibility", r.orgResponsibility],
-    ["Institution", r.institution],
+    ["University", r.university && universityText(r)],
+    ["College / Department", r.department],
+    ["Institution address", r.institution],
     ["Residential address", r.residentialAddress],
   ];
 

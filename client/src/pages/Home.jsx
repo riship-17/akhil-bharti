@@ -6,14 +6,14 @@ import { Icon, primaryButton, secondaryButton, telHref } from "../components/ui.
 
 const STEPS = [
   ["Create your account", "Sign up with your name, email, mobile number and a password. You will use it to see your status and Bhojan Pass."],
-  ["Fill in your details", "Cadre, district, institution, designation and residential address."],
+  ["Fill in your details", "Cadre, district, university, college / department, designation and residential address."],
   ["Pay ₹500 by UPI", "Scan the organiser's QR code inside the form with PhonePe, GPay, Paytm, BHIM or any UPI app, then upload the payment screenshot. You can add an optional Sahay Shulk (helping fund) to the same payment."],
   ["Receive your Bhojan Pass", "The organising committee checks each payment against the bank statement and sends your Bhojan Pass by email. It also appears under “My registration”."],
 ];
 
 const READY = [
   "Email address and 10-digit mobile number",
-  "Name and full address of your institution",
+  "Your university, and the name and full address of your college / department",
   "Residential address with PIN code",
   "A UPI app to pay ₹500, and a screenshot of the successful payment",
 ];

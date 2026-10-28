@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { CADRES, DESIGNATIONS, DISTRICTS, EVENT, FEE, labelOf, rupees } from "../../../shared/constants.js";
+import { CADRES, DESIGNATIONS, DISTRICTS, EVENT, FEE, UNIVERSITIES, labelOf, rupees, universityText } from "../../../shared/constants.js";
 import {
   DETAIL_FIELDS, MAX_PDF_BYTES, MAX_RECEIPT_BYTES, RECEIPT_TYPES,
   cleanDetails, cleanDonation, validateDetails, validateDonation,
@@ -20,7 +20,7 @@ const EMPTY = Object.fromEntries(DETAIL_FIELDS.map((k) => [k, ""]));
 
 const STEPS = [
   { en: "Personal Details", fields: ["email", "fullName", "cadre", "district", "mobile", "altContact"] },
-  { en: "Professional Details", fields: ["designation", "designationOther", "fieldOfStudy", "institution", "orgResponsibility", "residentialAddress"] },
+  { en: "Professional Details", fields: ["designation", "designationOther", "university", "universityOther", "department", "fieldOfStudy", "institution", "orgResponsibility", "residentialAddress"] },
   { en: "Review & Pay", fields: [] },
 ];
 const stepOf = (field) => STEPS.findIndex((s) => s.fields.includes(field));
@@ -325,31 +325,39 @@ function PersonalStep({ form, set, errors }) {
 }
 
 function DistrictPicker({ value, onChange, error }) {
+  return (
+    <Picker id="district" label="District" icon="location_on" options={DISTRICTS} value={value} onChange={onChange} error={error}
+      placeholder="Select district" title="Select district in Gujarat" searchLabel="Search district" searchPlaceholder="Search district name…" />
+  );
+}
+
+// A button that opens a searchable list, for long option lists.
+function Picker({ id, label, icon, options, value, onChange, error, placeholder, title, searchLabel, searchPlaceholder }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
-  const selected = DISTRICTS.find((x) => x.value === value);
+  const selected = options.find((x) => x.value === value);
   const query = q.trim().toLowerCase();
-  const list = query ? DISTRICTS.filter((x) => x.en.toLowerCase().includes(query)) : DISTRICTS;
+  const list = query ? options.filter((x) => x.en.toLowerCase().includes(query)) : options;
 
   function pick(v) {
     onChange(v);
     setOpen(false);
     setQ("");
-    document.getElementById("district")?.focus();
+    document.getElementById(id)?.focus();
   }
 
   return (
-    <Field id="district" label="District" required error={error}>
+    <Field id={id} label={label} required error={error}>
       <button
-        id="district" type="button" aria-expanded={open} aria-controls="district-sheet" onClick={() => setOpen((v) => !v)}
+        id={id} type="button" aria-expanded={open} aria-controls={`${id}-sheet`} onClick={() => setOpen((v) => !v)}
         className={`flex h-14 w-full items-center justify-between rounded-xl px-4 text-left shadow-sm ${error ? "bg-error-container/20 ring-2 ring-error" : "bg-surface-container-lowest ring-[1.5px] ring-inset ring-outline-variant focus-visible:ring-2 focus-visible:ring-primary"}`}
       >
         <span className="flex min-w-0 items-center gap-2">
-          <Icon name="location_on" className="text-[22px] text-primary" />
+          <Icon name={icon} className="shrink-0 text-[22px] text-primary" />
           {selected ? (
             <span className="truncate text-xl font-semibold text-primary">{selected.en}</span>
           ) : (
-            <span className="text-on-surface-variant">Select district</span>
+            <span className="text-on-surface-variant">{placeholder}</span>
           )}
         </span>
         <Icon name={open ? "expand_less" : "expand_more"} className="text-[24px] text-on-surface-variant" />
@@ -357,12 +365,12 @@ function DistrictPicker({ value, onChange, error }) {
 
       {open && (
         <div
-          id="district-sheet"
-          onKeyDown={(e) => { if (e.key === "Escape") { setOpen(false); document.getElementById("district")?.focus(); } }}
+          id={`${id}-sheet`}
+          onKeyDown={(e) => { if (e.key === "Escape") { setOpen(false); document.getElementById(id)?.focus(); } }}
           className="mt-2 w-full overflow-hidden rounded-2xl border-[1.5px] border-outline-variant bg-surface-container-lowest p-4 shadow-[0_12px_32px_rgba(90,65,56,0.15)]"
         >
           <div className="mb-3 flex items-center justify-between">
-            <p className="text-xl font-semibold">Select district in Gujarat</p>
+            <p className="text-xl font-semibold">{title}</p>
             <button type="button" aria-label="Close" onClick={() => setOpen(false)} className="flex h-9 w-9 items-center justify-center rounded-full bg-surface-container hover:bg-surface-container-high">
               <Icon name="close" className="text-[20px]" />
             </button>
@@ -370,7 +378,7 @@ function DistrictPicker({ value, onChange, error }) {
           <div className="relative mb-3 flex items-center">
             <Icon name="search" className="absolute left-3.5 text-[20px] text-on-surface-variant" />
             <input
-              autoFocus type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search district name…" aria-label="Search district"
+              autoFocus type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder={searchPlaceholder} aria-label={searchLabel}
               className="h-12 w-full rounded-xl bg-surface-container pl-11 pr-4"
               onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); if (list.length) pick(list[0].value); } }}
             />
@@ -387,7 +395,7 @@ function DistrictPicker({ value, onChange, error }) {
                 </li>
               );
             })}
-            {list.length === 0 && <li className="px-3.5 py-2.5 text-on-surface-variant">No district matches “{q}”.</li>}
+            {list.length === 0 && <li className="px-3.5 py-2.5 text-on-surface-variant">Nothing matches “{q}”.</li>}
           </ul>
         </div>
       )}
@@ -443,6 +451,20 @@ function ProfessionalStep({ form, set, errors }) {
         </div>
       </Field>
 
+      <Picker id="university" label="University" icon="account_balance" options={UNIVERSITIES} value={form.university} onChange={set("university")}
+        error={errors.university} placeholder="Select your university" title="Select your university" searchLabel="Search university"
+        searchPlaceholder="Search university name…" />
+      {form.university === "other" && (
+        <Field id="universityOther" label="Name of your university" required error={errors.universityOther}>
+          <input id="universityOther" autoFocus value={form.universityOther} onChange={set("universityOther")} placeholder="University name and city" className={inputClass(errors.universityOther)} />
+        </Field>
+      )}
+
+      <Field id="department" label="College / Department" required error={errors.department}
+        hint="Your college name, or your department if you are in the university cadre">
+        <input id="department" value={form.department} onChange={set("department")} placeholder="e.g. Govt. Arts College, Gandhinagar / Department of Physics" className={inputClass(errors.department)} />
+      </Field>
+
       <Field id="fieldOfStudy" label="Field of study / specialization" required error={errors.fieldOfStudy}
         hint="Main subject or discipline (e.g. Sanskrit, Physics, Economics)">
         <div className="relative">
@@ -451,10 +473,10 @@ function ProfessionalStep({ form, set, errors }) {
         </div>
       </Field>
 
-      <Field id="institution" label="Name & full address of institution" required error={errors.institution}>
+      <Field id="institution" label="Full address of college / department" required error={errors.institution}>
         <div className={textareaBoxClass(errors.institution)}>
-          <textarea id="institution" rows={4} maxLength={500} value={form.institution} onChange={set("institution")} placeholder="Name of the college or university department, campus and address with PIN code…" className="w-full resize-none bg-transparent p-3.5 leading-relaxed" />
-          <Counter value={form.institution} note="Institution name, department, city and PIN code" />
+          <textarea id="institution" rows={4} maxLength={500} value={form.institution} onChange={set("institution")} placeholder="Campus, area, city and PIN code…" className="w-full resize-none bg-transparent p-3.5 leading-relaxed" />
+          <Counter value={form.institution} note="Area, city and PIN code" />
         </div>
       </Field>
 
@@ -531,7 +553,9 @@ function ReviewStep({ d, goTo, locked, agreed, setAgreed, errors, upi }) {
             <Item label="Designation">{d.designation === "other" ? d.designationOther : designation?.en}</Item>
             <Item label="Subject">{d.fieldOfStudy}</Item>
           </div>
-          <Item className={rule} label="Institution">{d.institution}</Item>
+          <Item className={rule} label="University">{universityText(d)}</Item>
+          <Item className={rule} label="College / Department">{d.department}</Item>
+          <Item className={rule} label="Institution Address">{d.institution}</Item>
           {d.orgResponsibility && <Item className={rule} label="Org Role">{d.orgResponsibility}</Item>}
           <Item className={rule} label="Residential Address">{d.residentialAddress}</Item>
         </ReviewSection>

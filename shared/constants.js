@@ -45,9 +45,47 @@ export const DISTRICTS = [
   ["Valsad"],
 ].map(([en]) => ({ value: en, en }));
 
+// University units of ABRSM Gujarat, in the committee's order. College cadre members pick the university
+// their college is affiliated to.
+export const UNIVERSITIES = [
+  "M. S. University, Vadodara",
+  "Birsa Munda Tribal University, Rajpipla",
+  "Agriculture University, Anand",
+  "Swarnim Gujarat Sports University, Desar",
+  "Sardar Patel University, Vallabh Vidyanagar",
+  "Agriculture University, Navsari",
+  "Saurashtra University, Rajkot",
+  "Krantiguru Shyamji Krishna Verma Kachchh University",
+  "Govind Guru University, Godhra",
+  "HNGU, Patan",
+  "Central University of Gujarat",
+  "VNSGU, Surat",
+  "Dr. Babasaheb Ambedkar Open University, Ahmedabad",
+  "PDEU, Gandhinagar",
+  "Forensic University, Gandhinagar",
+  "Gujarat Vidyapith, Ahmedabad",
+  "IIM Ahmedabad",
+  "Indian Institute of Teacher Education (IITE), Gandhinagar",
+  "Gujarat Technological University, Gandhinagar",
+  "Kamdhenu University, Gandhinagar",
+  "Gujarat University, Ahmedabad",
+  "Agriculture University, Dantiwada",
+  "Raksha Shakti University",
+  "Maharaja Krishnakumarsinhji Bhavnagar University, Bhavnagar",
+  "Bhakta Kavi Narsinh Mehta University, Junagadh",
+  "Shri Somnath Sanskrit University, Veraval",
+  "Agriculture University, Junagadh",
+  "Ayurved University, Jamnagar",
+  "Children's Research University, Gandhinagar",
+  "Kaushalya – The Skill University, Ahmedabad",
+].map((en) => ({ value: en, en })).concat({ value: "other", en: "Other" });
+
 export const STATUSES = ["pending", "verified", "rejected"];
 
 export const labelOf = (list, value) => list.find((x) => x.value === value)?.en ?? value ?? "";
 
 export const designationText = (r) =>
   r.designation === "other" ? r.designationOther || "Other" : labelOf(DESIGNATIONS, r.designation);
+
+export const universityText = (r) =>
+  r.university === "other" ? r.universityOther || "Other" : labelOf(UNIVERSITIES, r.university);
