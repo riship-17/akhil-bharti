@@ -1,4 +1,4 @@
-import { CADRES, DESIGNATIONS, DISTRICTS } from "./constants.js";
+import { CADRES, DESIGNATIONS, DISTRICTS, MAX_DONATION, rupees } from "./constants.js";
 
 export const DETAIL_FIELDS = [
   "email", "fullName", "cadre", "district", "institution", "designation", "designationOther",
@@ -43,12 +43,16 @@ export function validateDetails(d) {
   return e;
 }
 
-export function cleanUtr(v) {
-  return str(v).replace(/\s/g, "").toUpperCase();
+// Sahay Shulk in whole rupees; blank means none. "3,500" and "₹ 3500" are accepted.
+export function cleanDonation(v) {
+  const s = str(String(v ?? "")).replace(/[\s,₹]/g, "");
+  return s === "" ? 0 : Number(s);
 }
 
-export function validateUtr(utr) {
-  return /^[A-Z0-9]{6,30}$/.test(utr) ? null : "Enter the UTR / transaction ID exactly as shown in your payment app.";
+export function validateDonation(n) {
+  if (!Number.isInteger(n) || n < 0) return "Enter the Sahay Shulk in whole rupees, or leave it blank.";
+  if (n > MAX_DONATION) return `The Sahay Shulk can be at most ${rupees(MAX_DONATION)} in one UPI payment. Contact the organising team to give more.`;
+  return null;
 }
 
 export const RECEIPT_TYPES = ["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif", "application/pdf"];

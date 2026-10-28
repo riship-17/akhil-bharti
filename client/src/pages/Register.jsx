@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { CADRES, DESIGNATIONS, DISTRICTS, EVENT, labelOf } from "../../../shared/constants.js";
+import { CADRES, DESIGNATIONS, DISTRICTS, EVENT, FEE, labelOf, rupees } from "../../../shared/constants.js";
 import {
   DETAIL_FIELDS, MAX_PDF_BYTES, MAX_RECEIPT_BYTES, RECEIPT_TYPES,
-  cleanDetails, cleanUtr, validateDetails, validateUtr,
+  cleanDetails, cleanDonation, validateDetails, validateDonation,
 } from "../../../shared/validate.js";
 import { store, upload } from "../api.js";
 import { useAuth } from "../auth.js";
@@ -26,6 +26,7 @@ const STEPS = [
 const stepOf = (field) => STEPS.findIndex((s) => s.fields.includes(field));
 
 const CADRE_ICONS = { college: "school", university: "account_balance" };
+const SAHAY_PRESETS = [500, 1100, 2100, 5100];
 const designationLabel = (d) => (d.designation === "other" ? d.designationOther : labelOf(DESIGNATIONS, d.designation));
 
 export default function Register() {
@@ -41,7 +42,7 @@ export default function Register() {
     ...(store.get(DRAFT_KEY) || {}),
     email: user?.email || "",
   }));
-  const [utr, setUtr] = useState("");
+  const [donation, setDonation] = useState("");
   const [file, setFile] = useState(null);
   const [agreed, setAgreed] = useState(false);
   const [errors, setErrors] = useState({});
@@ -108,9 +109,9 @@ export default function Register() {
     showErrors(err.fields, err.message);
   }
 
-  function finish(res, paymentRef) {
+  function finish(res) {
     store.remove(DRAFT_KEY);
-    setResult({ ...res, paymentRef, details: cleanDetails(form) });
+    setResult({ ...res, details: cleanDetails(form) });
     setStep("done");
     refresh().catch(() => {});
   }
@@ -118,21 +119,21 @@ export default function Register() {
   async function submitUpi(e) {
     e.preventDefault();
     const errs = {};
-    const utrErr = validateUtr(cleanUtr(utr));
-    if (utrErr) errs.utr = utrErr;
+    const donationErr = validateDonation(cleanDonation(donation));
+    if (donationErr) errs.donation = donationErr;
     if (!file) errs.receipt = "Upload the payment screenshot or receipt.";
     if (!agreed) errs.agree = "Please confirm that your details are correct.";
     if (Object.keys(errs).length) return showErrors(errs);
 
     const data = new FormData();
     Object.entries(cleanDetails(form)).forEach(([k, v]) => data.append(k, v));
-    data.append("utr", cleanUtr(utr));
+    data.append("donation", String(cleanDonation(donation)));
     data.append("receipt", file);
 
     setBanner("");
     setProgress(0);
     try {
-      finish(await upload("/register", data, { token, onProgress: setProgress }), cleanUtr(utr));
+      finish(await upload("/register", data, { token, onProgress: setProgress }));
     } catch (err) {
       handleError(err);
     } finally {
@@ -208,7 +209,7 @@ export default function Register() {
                     agreed={agreed}
                     setAgreed={(v) => { setAgreed(v); if (errors.agree) setErrors(({ agree, ...r }) => r); }}
                     errors={errors}
-                    upi={<UpiProof utr={utr} setUtr={(v) => { setUtr(v); if (errors.utr) setErrors(({ utr, ...r }) => r); }} file={file} pickFile={pickFile} clearFile={() => setFile(null)} errors={errors} disabled={submitting} />}
+                    upi={<UpiProof donation={donation} setDonation={(v) => { setDonation(v); if (errors.donation) setErrors(({ donation, ...r }) => r); }} file={file} pickFile={pickFile} clearFile={() => setFile(null)} errors={errors} disabled={submitting} />}
                   />
                 )}
               </div>
@@ -551,19 +552,46 @@ function ReviewStep({ d, goTo, locked, agreed, setAgreed, errors, upi }) {
   );
 }
 
-// Pay by UPI QR, then enter the UTR and upload the screenshot.
-function UpiProof({ utr, setUtr, file, pickFile, clearFile, errors, disabled }) {
+// Optional Sahay Shulk, then pay fee + Sahay Shulk by UPI QR and upload the screenshot.
+function UpiProof({ donation, setDonation, file, pickFile, clearFile, errors, disabled }) {
+  const amount = cleanDonation(donation);
+  const error = errors.donation || validateDonation(amount);
   return (
     <>
-      <PaymentPanel />
-      <Field id="utr" label="Payment transaction ID / UTR" required error={errors.utr} hint="Found under “UPI Ref No.” or “UTR” in your payment app.">
-        <input id="utr" autoComplete="off" value={utr} onChange={(e) => setUtr(e.target.value)} placeholder="12-digit UPI reference number" className={inputClass(errors.utr)} />
-      </Field>
+      <SahayShulk value={donation} onChange={setDonation} error={error} disabled={disabled} />
+      <PaymentPanel donation={error ? 0 : amount} />
       <Field label="Upload the payment screenshot" required error={errors.receipt}
-        hint="Screenshot of the successful payment, showing the amount and UTR. It is compressed automatically before upload.">
+        hint="Screenshot of the successful payment, showing the amount. It is compressed automatically before upload.">
         <FilePicker file={file} onPick={pickFile} onClear={clearFile} disabled={disabled} />
       </Field>
     </>
+  );
+}
+
+function SahayShulk({ value, onChange, error, disabled }) {
+  const amount = cleanDonation(value);
+  return (
+    <Field id="donation" label="Sahay Shulk (helping fund)" optional error={error}
+      sub={`Add a contribution on top of the ${rupees(FEE)} Bhojan Pass fee. It is paid in the same UPI payment.`}
+      hint={amount ? `You will pay ${rupees(FEE + amount)}: ${rupees(FEE)} Bhojan Pass fee + ${rupees(amount)} Sahay Shulk.` : "Leave blank to pay only the Bhojan Pass fee."}>
+      <div className="mb-3 flex flex-wrap gap-2">
+        {SAHAY_PRESETS.map((p) => {
+          const on = amount === p;
+          return (
+            <button key={p} type="button" aria-pressed={on} disabled={disabled} onClick={() => onChange(on ? "" : String(p))}
+              className={`rounded-lg px-3.5 py-2 text-[15px] font-semibold transition-colors disabled:opacity-40 ${on ? "bg-primary text-on-primary" : "bg-surface-container-low ring-[1.5px] ring-inset ring-outline-variant hover:bg-surface-container"}`}>
+              {rupees(p)}
+            </button>
+          );
+        })}
+      </div>
+      <div className={`flex items-stretch overflow-hidden rounded-xl shadow-sm ${error ? "ring-2 ring-error" : "ring-[1.5px] ring-inset ring-outline-variant focus-within:ring-2 focus-within:ring-primary"}`}>
+        <div className="flex select-none items-center bg-surface-container px-4 font-semibold">₹</div>
+        <input id="donation" inputMode="numeric" autoComplete="off" maxLength={6} disabled={disabled} value={value}
+          onChange={(e) => onChange(e.target.value.replace(/\D/g, ""))} placeholder="Other amount" aria-invalid={!!error}
+          className="h-14 min-w-0 flex-1 bg-surface-container-lowest px-4" />
+      </div>
+    </Field>
   );
 }
 
@@ -640,7 +668,7 @@ function BadgePreview({ form, contacts }) {
         </div>
 
         <div className="space-y-3 text-[15px] text-on-surface-variant">
-          <p className="flex items-start gap-2.5"><Icon name="payments" className="mt-0.5 shrink-0 text-[20px] text-primary" />₹500 fee, paid at the end of the form.</p>
+          <p className="flex items-start gap-2.5"><Icon name="payments" className="mt-0.5 shrink-0 text-[20px] text-primary" />₹500 Bhojan Pass fee, plus an optional Sahay Shulk, paid at the end of the form.</p>
           <p className="flex items-start gap-2.5"><Icon name="confirmation_number" className="mt-0.5 shrink-0 text-[20px] text-tertiary" />You get your registration number as soon as you submit.</p>
           <p className="flex items-start gap-2.5"><Icon name="badge" className="mt-0.5 shrink-0 text-[20px] text-secondary" />Keep the number with you on the day.</p>
         </div>
@@ -721,14 +749,13 @@ function Success({ result, contacts }) {
               </div>
             </Row>
             {district && <Row label="District"><span className="text-[15px] font-bold">{district.en}</span></Row>}
-            {result?.paymentRef && (
-              <Row label="Transaction ID / UTR">
-                <span className="break-all font-mono text-[13px] font-medium text-on-surface-variant">{result.paymentRef}</span>
-              </Row>
+            <Row label="Bhojan Pass fee"><span className="text-[15px] font-bold">{rupees(FEE)}</span></Row>
+            {result?.donation > 0 && (
+              <Row label="Sahay Shulk (helping fund)"><span className="text-[15px] font-bold">{rupees(result.donation)}</span></Row>
             )}
             <div className="-mx-4 mt-1 flex items-center justify-between rounded-b-xl border-t border-outline-variant/70 bg-surface/50 px-4 pb-1 pt-3">
-              <span className="text-[15px] font-semibold leading-tight text-on-primary-fixed-variant">Amount</span>
-              <span className="text-[18px] font-bold text-on-primary-fixed-variant">₹500.00</span>
+              <span className="text-[15px] font-semibold leading-tight text-on-primary-fixed-variant">Total paid</span>
+              <span className="text-[18px] font-bold text-on-primary-fixed-variant">{rupees(result?.amount ?? FEE)}</span>
             </div>
           </div>
         </div>

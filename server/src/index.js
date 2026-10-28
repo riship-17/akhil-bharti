@@ -47,5 +47,8 @@ app.use((err, req, res, next) => {
 });
 
 await mongoose.connect(process.env.MONGODB_URI);
+// The form no longer asks for a UTR, so the old unique index on it would reject every registration after the first.
+const { Registration } = await import("./models.js");
+await Registration.collection.dropIndex("utr_1").catch(() => {});
 const port = Number(process.env.PORT) || 5050;
 app.listen(port, () => console.log(`API ready on http://localhost:${port}`));

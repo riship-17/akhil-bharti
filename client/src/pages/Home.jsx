@@ -7,7 +7,7 @@ import { Icon, primaryButton, secondaryButton, telHref } from "../components/ui.
 const STEPS = [
   ["Create your account", "Sign up with your name, email, mobile number and a password. You will use it to see your status and Bhojan Pass."],
   ["Fill in your details", "Cadre, district, institution, designation and residential address."],
-  ["Pay ₹500 by UPI", "Scan the organiser's QR code inside the form with PhonePe, GPay, Paytm, BHIM or any UPI app, then enter the UTR and upload the payment screenshot."],
+  ["Pay ₹500 by UPI", "Scan the organiser's QR code inside the form with PhonePe, GPay, Paytm, BHIM or any UPI app, then upload the payment screenshot. You can add an optional Sahay Shulk (helping fund) to the same payment."],
   ["Receive your Bhojan Pass", "The organising committee checks each payment against the bank statement and sends your Bhojan Pass by email. It also appears under “My registration”."],
 ];
 
@@ -28,9 +28,9 @@ const ATTENDEES = [
 const FAQ = [
   ["Who can register?", "Teachers and principals of colleges and universities in Gujarat — Principals, Professors, Associate and Assistant Professors and Teaching Assistants, from both the college and university cadres."],
   ["Why do I need an account?", "Your account keeps your registration in one place: you can see whether your payment has been verified, open your Bhojan Pass and, after the conference, download your certificate. Log in with the email and password you chose."],
-  ["How do I pay the ₹500 fee?", "By UPI. The QR code is shown on the last step of the registration form (on a phone you can also tap “Pay in UPI app”). Pay with any UPI app, then enter the UTR and upload the screenshot in the same form."],
-  ["Where do I find the UTR number?", "Open the payment in your UPI app's history. It is listed as UPI Ref No., UTR or Transaction ID and is usually 12 digits long."],
-  ["I paid, but the form didn't submit. What should I do?", "Do not pay again. Log in, open the form once more and use the UTR number and screenshot from your first payment."],
+  ["How do I pay the ₹500 fee?", "By UPI. The QR code is shown on the last step of the registration form (on a phone you can also tap “Pay in UPI app”). Pay with any UPI app, then upload the screenshot in the same form."],
+  ["What is the Sahay Shulk?", "An optional contribution to the helping fund, paid together with the ₹500 fee. Choose or type an amount on the last step of the form and the QR code shows the total. For example, if you pay ₹4,000, ₹500 is your Bhojan Pass fee and ₹3,500 is your Sahay Shulk."],
+  ["I paid, but the form didn't submit. What should I do?", "Do not pay again. Log in, open the form once more and upload the screenshot from your first payment."],
   ["What is the Bhojan Pass?", "Once the organisers verify your payment, they send you a Bhojan Pass with a QR code by email. Show the QR code at the food counter. You can also open it any time under “My registration”."],
   ["Can I register on behalf of colleagues?", "Each participant needs their own account and their own payment, so every registration can be verified individually."],
 ];

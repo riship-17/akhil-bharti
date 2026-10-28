@@ -1,4 +1,4 @@
-import { EVENT, FEE } from "../../../shared/constants.js";
+import { EVENT, FEE, rupees } from "../../../shared/constants.js";
 import { Registration } from "../models.js";
 import { certificateFilename, certificatePdf } from "./certificate.js";
 import { passQrPng, passUrl, siteUrl } from "./pass.js";
@@ -58,7 +58,7 @@ const templates = {
     html: layout(`
       <p>Dear ${esc(r.fullName)},</p>
       <p>We have received your registration. Once the organising team verifies your payment, your Bhojan Pass will be emailed to you and will also appear in your account on the website.</p>
-      <table style="border-collapse:collapse;margin:12px 0">${row("Registration No", r.regNo)}${row("Amount", `₹${FEE}`)}${row("Transaction ID", r.utr)}</table>`),
+      <table style="border-collapse:collapse;margin:12px 0">${row("Registration No", r.regNo)}${row("Bhojan Pass fee", rupees(FEE))}${r.donation ? row("Sahay Shulk (helping fund)", rupees(r.donation)) : ""}${row("Total paid", rupees(r.amount))}</table>`),
   }),
 
   // Bhojan Pass, sent by admins after verifying the payment. The QR code is embedded in the email (cid:)

@@ -1,5 +1,11 @@
 export const FEE = 500;
 
+// Optional Sahay Shulk (helping fund) a participant can add on top of the Bhojan Pass fee, in the same UPI payment.
+// UPI caps a single payment at ₹1,00,000, so fee + Sahay Shulk must stay within that.
+export const MAX_DONATION = 100000 - FEE;
+
+export const rupees = (n) => "₹" + Number(n || 0).toLocaleString("en-IN");
+
 // The organiser's PhonePe UPI (decoded from their QR code). Admins can change it in Payment & settings.
 export const UPI = { id: "9879930825-4@ybl", payee: "AKHIL BHARTIY RASHTRIY SHAIKSHIK MAHASANGH GUJARAT" };
 

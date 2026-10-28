@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { CADRES, designationText, labelOf } from "../../../shared/constants.js";
+import { CADRES, FEE, designationText, labelOf, rupees } from "../../../shared/constants.js";
 import { when } from "./Registrations.jsx";
 
 export default function Detail({ reg: r, call, token, onClose, onChanged }) {
@@ -22,7 +22,7 @@ export default function Detail({ reg: r, call, token, onClose, onChanged }) {
 
   async function setStatus(status) {
     if (status === "rejected" && !note.trim()) {
-      setMsg("Add a short note explaining why (e.g. “UTR not found in bank statement”) before rejecting.");
+      setMsg("Add a short note explaining why (e.g. “Payment not found in bank statement”) before rejecting.");
       return;
     }
     setBusy(status);
@@ -120,13 +120,15 @@ export default function Detail({ reg: r, call, token, onClose, onChanged }) {
         <div className="drawer-body">
           <section className="pay-check">
             <div className="pay-facts">
-              <div><span>Amount</span><b>₹{r.amount}</b></div>
-              <div><span>UTR / Transaction ID</span><b className="mono">{r.utr}</b></div>
+              <div><span>Total paid</span><b>{rupees(r.amount)}</b></div>
+              <div><span>Bhojan Pass fee</span><b>{rupees(FEE)}</b></div>
+              <div><span>Sahay Shulk</span><b>{rupees(r.donation)}</b></div>
+              {r.utr && <div><span>UTR / Transaction ID</span><b className="mono">{r.utr}</b></div>}
             </div>
             <a href={receiptUrl} target="_blank" rel="noopener" className="receipt">
               {isPdf ? <div className="file-icon big">PDF<small>Open receipt</small></div> : <img src={receiptUrl} alt="Payment screenshot" />}
             </a>
-            <p className="muted small">Match the UTR and amount with your bank / UPI statement before verifying. Click the screenshot to open it full size.</p>
+            <p className="muted small">Check that the screenshot shows the total paid, and find the payment in your bank / UPI statement before verifying. Click the screenshot to open it full size.</p>
           </section>
 
           {r.status === "verified" && (

@@ -1,20 +1,23 @@
 import { useEffect, useState } from "react";
 import QRCode from "qrcode";
+import { rupees } from "../../../shared/constants.js";
 import { useConfig } from "../config.js";
 
-export function upiLink(c) {
+export function upiLink(c, amount = c?.fee) {
   if (!c?.upiId) return "";
-  const p = new URLSearchParams({ pa: c.upiId, pn: c.payeeName || "ABRSM Gujarat", am: String(c.fee), cu: "INR", tn: "State Conference 2026" });
+  const p = new URLSearchParams({ pa: c.upiId, pn: c.payeeName || "ABRSM Gujarat", am: String(amount), cu: "INR", tn: "State Conference 2026" });
   return `upi://pay?${p.toString().replace(/\+/g, "%20")}`;
 }
 
-// UPI payment details on the last step of the form: a QR code for the organiser's UPI ID with the fee
-// pre-filled (or the QR image uploaded in the admin panel), plus a pay button that opens the UPI app on phones.
-export default function PaymentPanel() {
+// UPI payment details on the last step of the form: a QR code for the organiser's UPI ID with the total
+// (fee + Sahay Shulk) pre-filled, or the QR image uploaded in the admin panel, plus a pay button that opens
+// the UPI app on phones.
+export default function PaymentPanel({ donation = 0 }) {
   const c = useConfig();
   const [generated, setGenerated] = useState("");
   const [copied, setCopied] = useState("");
-  const link = upiLink(c);
+  const total = (c?.fee ?? 0) + donation;
+  const link = upiLink(c, total);
 
   useEffect(() => {
     if (c && !c.qrUrl && link) QRCode.toDataURL(link, { width: 480, margin: 1 }).then(setGenerated).catch(() => {});
@@ -47,10 +50,13 @@ export default function PaymentPanel() {
           <div className="flex aspect-square items-center justify-center rounded-lg border-[1.5px] border-dashed border-outline-variant p-4 text-sm text-on-surface-variant">QR code will be added soon</div>
         )}
         <p className="mt-2 text-sm font-semibold">Scan &amp; pay with any UPI app</p>
-        {link && <a className="mt-2 inline-flex rounded-lg px-3 py-1.5 text-sm font-semibold text-primary ring-1 ring-inset ring-primary sm:hidden" href={link}>Pay ₹{c.fee} in UPI app</a>}
+        {link && <a className="mt-2 inline-flex rounded-lg px-3 py-1.5 text-sm font-semibold text-primary ring-1 ring-inset ring-primary sm:hidden" href={link}>Pay {rupees(total)} in UPI app</a>}
       </div>
       <div>
-        <p className="text-4xl font-bold leading-none text-on-primary-fixed-variant">₹ {c.fee}<small className="ml-2 text-[15px] font-normal text-on-surface-variant">Five hundred rupees only</small></p>
+        <p className="text-4xl font-bold leading-none text-on-primary-fixed-variant">{rupees(total)}</p>
+        <p className="mt-1.5 text-[15px] text-on-surface-variant">
+          {donation ? `${rupees(c.fee)} Bhojan Pass fee + ${rupees(donation)} Sahay Shulk` : "Bhojan Pass fee"}
+        </p>
         {rows.length > 0 && (
           <table className="mt-4 w-full text-[15px]">
             <tbody>
@@ -71,7 +77,8 @@ export default function PaymentPanel() {
           </table>
         )}
         <div className="mt-4 rounded-r-lg border-l-[3px] border-primary bg-primary-fixed/40 px-3.5 py-3 text-[15px]">
-          <p>After paying, take a screenshot and note the 12-digit UTR / transaction ID shown in your UPI app.</p>
+          {c.qrUrl && <p className="mb-1.5 font-semibold">This QR code has no amount filled in: enter {rupees(total)} in your UPI app.</p>}
+          <p>After paying, take a screenshot of the successful payment showing the amount.</p>
         </div>
       </div>
     </div>

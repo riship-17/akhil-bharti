@@ -52,7 +52,16 @@ async function findReg(req, res) {
 
 router.get("/stats", async (req, res) => {
   const [byStatus, byDistrict] = await Promise.all([
-    Registration.aggregate([{ $group: { _id: "$status", n: { $sum: 1 } } }]),
+    Registration.aggregate([
+      {
+        $group: {
+          _id: "$status",
+          n: { $sum: 1 },
+          amount: { $sum: { $ifNull: ["$amount", FEE] } },
+          donation: { $sum: { $ifNull: ["$donation", 0] } },
+        },
+      },
+    ]),
     Registration.aggregate([
       { $match: { status: { $ne: "rejected" } } },
       { $group: { _id: "$district", n: { $sum: 1 } } },
@@ -60,11 +69,16 @@ router.get("/stats", async (req, res) => {
     ]),
   ]);
   const counts = Object.fromEntries(STATUSES.map((s) => [s, 0]));
-  for (const x of byStatus) counts[x._id] = x.n;
+  const verified = { amount: 0, donation: 0 };
+  for (const x of byStatus) {
+    counts[x._id] = x.n;
+    if (x._id === "verified") Object.assign(verified, x);
+  }
   res.json({
     ...counts,
     total: counts.pending + counts.verified + counts.rejected,
-    collected: counts.verified * FEE,
+    collected: verified.amount,
+    donations: verified.donation,
     byDistrict: byDistrict.map((d) => ({ district: d._id, count: d.n })),
     mailEnabled,
   });
@@ -261,7 +275,9 @@ router.get("/export.csv", async (req, res) => {
     ["Organizational Responsibility", (r) => r.orgResponsibility],
     ["Institution & Address", (r) => r.institution],
     ["Residential Address", (r) => r.residentialAddress],
-    ["Amount", (r) => r.amount],
+    ["Bhojan Pass Fee", () => FEE],
+    ["Sahay Shulk", (r) => r.donation || 0],
+    ["Total Paid", (r) => r.amount],
     ["UTR", (r) => r.utr],
     ["Bhojan Pass emailed", (r) => istTime(r.pass?.emailedAt)],
     ["Certificate emailed", (r) => istTime(r.certificate?.emailedAt)],

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { DISTRICTS } from "../../../shared/constants.js";
+import { DISTRICTS, rupees } from "../../../shared/constants.js";
 import Detail from "./Detail.jsx";
 
 const TABS = [
@@ -8,8 +8,6 @@ const TABS = [
   ["verified", "Verified"],
   ["rejected", "Rejected"],
 ];
-
-const rupees = (n) => "₹" + Number(n || 0).toLocaleString("en-IN");
 export const when = (d) =>
   new Date(d).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit", timeZone: "Asia/Kolkata" });
 
@@ -66,6 +64,7 @@ export default function Registrations({ call, token }) {
         <Stat label="Verified" value={stats?.verified} />
         <Stat label="Rejected" value={stats?.rejected} />
         <Stat label="Verified amount" value={stats && rupees(stats.collected)} />
+        <Stat label="Sahay Shulk (verified)" value={stats && rupees(stats.donations)} />
       </div>
 
       {stats && !stats.mailEnabled && (
@@ -84,7 +83,7 @@ export default function Registrations({ call, token }) {
           ))}
         </div>
         <div className="filters">
-          <input type="search" placeholder="Search name, mobile, UTR, reg no…" value={q} onChange={(e) => setQ(e.target.value)} />
+          <input type="search" placeholder="Search name, mobile, reg no…" value={q} onChange={(e) => setQ(e.target.value)} />
           <select value={district} onChange={(e) => { setDistrict(e.target.value); setPage(1); }}>
             <option value="">All districts</option>
             {DISTRICTS.map((d) => <option key={d.value} value={d.value}>{d.en}</option>)}
@@ -103,7 +102,7 @@ export default function Registrations({ call, token }) {
               <th>Name &amp; institution</th>
               <th>District</th>
               <th>Mobile</th>
-              <th>UTR</th>
+              <th>Amount</th>
               <th>Submitted</th>
               <th>Status</th>
               <th>Bhojan Pass</th>
@@ -119,7 +118,10 @@ export default function Registrations({ call, token }) {
                 </td>
                 <td>{r.district}</td>
                 <td className="mono">{r.mobile}</td>
-                <td className="mono">{r.utr}</td>
+                <td className="nowrap">
+                  <b>{rupees(r.amount)}</b>
+                  {r.donation > 0 && <span className="sub-line">incl. {rupees(r.donation)} Sahay Shulk</span>}
+                </td>
                 <td className="nowrap">{when(r.createdAt)}</td>
                 <td><span className={`chip ${r.status}`}>{r.status}</span></td>
                 <td className="nowrap small">

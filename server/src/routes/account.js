@@ -1,7 +1,8 @@
 import { Router } from "express";
 import rateLimit from "express-rate-limit";
+import { FEE } from "../../../shared/constants.js";
 import {
-  cleanAccount, cleanDetails, cleanUtr, validateAccount, validateDetails, validatePassword, validateUtr,
+  cleanAccount, cleanDetails, cleanDonation, validateAccount, validateDetails, validateDonation, validatePassword,
 } from "../../../shared/validate.js";
 import { Registration, Settings, User, nextRegNo } from "../models.js";
 import { deleteFile, saveFile, shrinkReceipt, uploader } from "../lib/files.js";
@@ -95,7 +96,8 @@ router.get("/me", requireUser, async (req, res) => {
       regNo: r.regNo,
       fullName: r.fullName,
       status: r.status,
-      utr: r.utr,
+      amount: r.amount,
+      donation: r.donation || 0,
       submittedAt: r.createdAt,
       note: r.status === "rejected" ? r.adminNote || "" : "",
       passToken: confirmed && r.pass?.issuedAt ? r.pass.token : undefined,
@@ -112,10 +114,10 @@ router.post("/register", requireUser, limit(15, 20), uploader().single("receipt"
 
   // The registration always uses the account's email, so emails and the account stay linked.
   const details = { ...cleanDetails(req.body), email: user.email };
-  const utr = cleanUtr(req.body?.utr);
+  const donation = cleanDonation(req.body?.donation);
   const fields = validateDetails(details);
-  const utrError = validateUtr(utr);
-  if (utrError) fields.utr = utrError;
+  const donationError = validateDonation(donation);
+  if (donationError) fields.donation = donationError;
   if (!req.file) fields.receipt = "Upload the payment screenshot.";
   if (Object.keys(fields).length) return res.status(400).json({ error: "Please correct the highlighted fields.", fields });
 
@@ -131,12 +133,6 @@ router.post("/register", requireUser, limit(15, 20), uploader().single("receipt"
         : "This email or mobile number is already used by another registration. Contact the organising team if this is a mistake.",
     });
   }
-  if (await Registration.exists({ utr })) {
-    return res.status(409).json({
-      error: "This transaction ID has already been used for a registration.",
-      fields: { utr: "Already used for another registration." },
-    });
-  }
 
   const receipt = await shrinkReceipt(req.file);
   const fileId = await saveFile(receipt, { kind: "receipt" });
@@ -145,20 +141,20 @@ router.post("/register", requireUser, limit(15, 20), uploader().single("receipt"
     reg = await Registration.create({
       ...details,
       user: user._id,
-      utr,
+      amount: FEE + donation,
+      donation,
       regNo: await nextRegNo(),
       receipt: { fileId, filename: receipt.originalname, contentType: receipt.mimetype, size: receipt.size },
     });
   } catch (err) {
     await deleteFile(fileId);
-    if (err.code === 11000) {
-      return res.status(409).json({ error: "This transaction ID has already been used.", fields: { utr: "Already used." } });
-    }
     throw err;
   }
 
   notify("received", reg);
-  res.status(201).json({ regNo: reg.regNo, fullName: reg.fullName, email: reg.email, status: reg.status });
+  res.status(201).json({
+    regNo: reg.regNo, fullName: reg.fullName, email: reg.email, status: reg.status, amount: reg.amount, donation: reg.donation,
+  });
 });
 
 export default router;

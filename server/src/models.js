@@ -36,9 +36,11 @@ const registrationSchema = new mongoose.Schema(
     mobile: { type: String, required: true, index: true },
     altContact: String,
 
+    // Total paid: the Bhojan Pass fee plus the optional Sahay Shulk (helping fund).
     amount: { type: Number, default: FEE },
-    // The UPI reference (UTR) typed by the participant.
-    utr: { type: String, required: true, unique: true },
+    donation: { type: Number, default: 0 },
+    // UPI reference (UTR), only on registrations made while the form still asked for it.
+    utr: String,
     // Payment screenshot, shrunk before saving (see lib/files.js).
     receipt: {
       fileId: { type: mongoose.Schema.Types.ObjectId, required: true },

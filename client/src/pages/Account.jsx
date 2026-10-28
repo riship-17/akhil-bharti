@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { Link } from "react-router-dom";
+import { rupees } from "../../../shared/constants.js";
 import { useAuth } from "../auth.js";
 import { useConfig } from "../config.js";
 import { Icon, primaryButton, secondaryButton, telHref } from "../components/ui.jsx";
@@ -72,7 +73,7 @@ export default function Account() {
               </div>
               <p className="font-semibold">{r.fullName}</p>
               <p className="text-[15px] text-on-surface-variant">{label[1]}</p>
-              <p className="text-sm text-on-surface-variant">Submitted {when(r.submittedAt)} · UTR <span className="font-mono">{r.utr}</span></p>
+              <p className="text-sm text-on-surface-variant">Submitted {when(r.submittedAt)} · {rupees(r.amount)} paid{r.donation > 0 && ` (incl. ${rupees(r.donation)} Sahay Shulk)`}</p>
 
               {r.note && (
                 <p className="rounded-r-lg border-l-[3px] border-primary bg-primary-fixed/40 px-3.5 py-3 text-[15px]">
