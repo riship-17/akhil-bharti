@@ -6,8 +6,10 @@ import { CADRES, FEE, STATUSES, UPI, designationText, labelOf, universityText } 
 import { Registration, Settings } from "../models.js";
 import { deleteFile, saveFile, sendFile, uploader } from "../lib/files.js";
 import { mailEnabled, notify, sendCertificate, sendPass } from "../lib/mail.js";
+import { bulkStatus, ensurePassToken, queueBulk, stopBulk } from "../lib/bulk.js";
 import { certificateFilename, certificatePdf } from "../lib/certificate.js";
 import { newPassToken } from "../lib/pass.js";
+import { payeeOf, receiptFilename, receiptPdf } from "../lib/receipt.js";
 import { requireAdmin, signToken } from "../lib/auth.js";
 
 const router = Router();
@@ -134,6 +136,15 @@ router.post("/registrations/:id/pass", async (req, res) => {
   res.json({ registration: await Registration.findById(r._id), emailed: result.sent, error: result.error });
 });
 
+// The fee receipt PDF that goes out with the Bhojan Pass.
+router.get("/registrations/:id/fee-receipt", async (req, res) => {
+  const r = await findReg(req, res);
+  if (!r) return;
+  if (r.status !== "verified") return res.status(400).json({ error: "The fee receipt is issued once the payment is verified." });
+  res.set({ "Content-Type": "application/pdf", "Content-Disposition": `inline; filename="${receiptFilename(r)}"` });
+  res.send(await receiptPdf(r, payeeOf(await Settings.load())));
+});
+
 router.get("/registrations/:id/certificate", async (req, res) => {
   const r = await findReg(req, res);
   if (!r) return;
@@ -160,74 +171,45 @@ router.delete("/registrations/:id", async (req, res) => {
   res.json({ ok: true });
 });
 
-async function ensurePassToken(r) {
-  // The pass link and the certificate download link both use the pass token as their secret.
-  if (!r.pass?.token) {
-    r.set("pass.token", newPassToken());
-    await r.save();
-  }
-}
+// ---- Bulk emails (Bhojan Pass broadcast, certificates), sent in daily phases: see lib/bulk.js ----
 
-// ---- Bulk emails (Bhojan Pass broadcast, certificates) ----
-// One run of each kind at a time, kept in memory. If the server restarts mid-way, pressing the button
-// again carries on with the people who have not received theirs yet.
-const runs = {};
-
-function startRun(kind, registrations, sendOne) {
-  const run = (runs[kind] = { running: true, total: registrations.length, sent: 0, failed: 0, startedAt: new Date() });
-  (async () => {
-    for (const r of registrations) {
-      await ensurePassToken(r);
-      const { sent } = await sendOne(r);
-      run[sent ? "sent" : "failed"]++;
-      await new Promise((done) => setTimeout(done, 600)); // stay under Resend's rate limit
-    }
-  })()
-    .catch((err) => {
-      console.error(`[${kind}] bulk send stopped:`, err);
-      run.error = err.message;
-    })
-    .finally(() => {
-      run.running = false;
-      run.finishedAt = new Date();
-    });
-}
-
-// ---- Bhojan Pass broadcast: every verified participant whose pass hasn't been emailed yet ----
-
-const passNotSent = { status: "verified", "pass.emailedAt": { $exists: false } };
+const NO_MAIL = "Email is not set up on the server (RESEND_API_KEY).";
 
 async function passSummary() {
-  const [verified, sent, failed] = await Promise.all([
+  const [verified, sent, failed, status] = await Promise.all([
     Registration.countDocuments({ status: "verified" }),
     Registration.countDocuments({ status: "verified", "pass.emailedAt": { $exists: true } }),
-    Registration.countDocuments({ ...passNotSent, "pass.lastError": { $exists: true } }),
+    Registration.countDocuments({ status: "verified", "pass.emailedAt": { $exists: false }, "pass.lastError": { $exists: true } }),
+    bulkStatus("passes"),
   ]);
-  return { verified, sent, failed, run: runs.passes || null, mailEnabled };
+  return { verified, sent, failed, ...status, mailEnabled };
 }
 
 router.get("/passes", async (req, res) => res.json(await passSummary()));
 
+// Emails the Bhojan Pass to every verified participant who hasn't been emailed yet, within the daily limit.
 router.post("/passes/send", async (req, res) => {
-  if (!mailEnabled) return res.status(400).json({ error: "Email is not set up on the server (RESEND_API_KEY)." });
-  if (!runs.passes?.running) {
-    const todo = await Registration.find(passNotSent).sort({ createdAt: 1 });
-    const origin = originOf(req);
-    startRun("passes", todo, (r) => sendPass(r, origin));
-  }
+  if (!mailEnabled) return res.status(400).json({ error: NO_MAIL });
+  await queueBulk("passes", originOf(req));
+  res.json(await passSummary());
+});
+
+router.post("/passes/stop", async (req, res) => {
+  await stopBulk("passes");
   res.json(await passSummary());
 });
 
 // ---- Certificates: emailed to every confirmed participant after the conference ----
 
 async function certificateSummary() {
-  const s = await Settings.load();
-  const [verified, sent, failed] = await Promise.all([
+  const [s, verified, sent, failed, status] = await Promise.all([
+    Settings.load(),
     Registration.countDocuments({ status: "verified" }),
     Registration.countDocuments({ status: "verified", "certificate.emailedAt": { $exists: true } }),
     Registration.countDocuments({ status: "verified", "certificate.emailedAt": { $exists: false }, "certificate.lastError": { $exists: true } }),
+    bulkStatus("certificates"),
   ]);
-  return { releasedAt: s.certificate?.releasedAt || null, verified, sent, failed, run: runs.certificates || null, mailEnabled };
+  return { releasedAt: s.certificate?.releasedAt || null, verified, sent, failed, ...status, mailEnabled };
 }
 
 router.get("/certificates", async (req, res) => res.json(await certificateSummary()));
@@ -242,17 +224,18 @@ router.get("/certificates/preview", async (req, res) => {
 });
 
 router.post("/certificates/send", async (req, res) => {
-  if (!mailEnabled) return res.status(400).json({ error: "Email is not set up on the server (RESEND_API_KEY)." });
-  if (runs.certificates?.running) return res.json(await certificateSummary());
-
+  if (!mailEnabled) return res.status(400).json({ error: NO_MAIL });
   const s = await Settings.load();
   if (!s.certificate?.releasedAt) {
     s.set("certificate.releasedAt", new Date());
     await s.save();
   }
-  const todo = await Registration.find({ status: "verified", "certificate.emailedAt": { $exists: false } }).sort({ createdAt: 1 });
-  const options = { origin: originOf(req), signatories: s.certificate.signatories };
-  startRun("certificates", todo, (r) => sendCertificate(r, options));
+  await queueBulk("certificates", originOf(req));
+  res.json(await certificateSummary());
+});
+
+router.post("/certificates/stop", async (req, res) => {
+  await stopBulk("certificates");
   res.json(await certificateSummary());
 });
 
@@ -313,6 +296,8 @@ router.put("/settings", async (req, res) => {
   const body = req.body || {};
   for (const k of SETTINGS_FIELDS) if (typeof body[k] === "string") s[k] = body[k].trim().slice(0, 200);
   if (typeof body.registrationOpen === "boolean") s.registrationOpen = body.registrationOpen;
+  const dailyLimit = Number(body.mail?.dailyLimit);
+  if (Number.isInteger(dailyLimit) && dailyLimit >= 10 && dailyLimit <= 100000) s.set("mail.dailyLimit", dailyLimit);
   if (Array.isArray(body.certificate?.signatories)) {
     s.set("certificate.signatories", body.certificate.signatories
       .slice(0, 3)

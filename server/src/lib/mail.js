@@ -1,7 +1,8 @@
-import { EVENT, FEE, rupees } from "../../../shared/constants.js";
-import { Registration } from "../models.js";
+import { EVENT, rupees } from "../../../shared/constants.js";
+import { MailLog, Registration, Settings } from "../models.js";
 import { certificateFilename, certificatePdf } from "./certificate.js";
 import { passQrPng, passUrl, siteUrl } from "./pass.js";
+import { payeeOf, receiptFilename, receiptPdf } from "./receipt.js";
 
 // Email through Resend (https://resend.com). MAIL_FROM must use a domain verified in Resend;
 // onboarding@resend.dev only delivers to the Resend account owner's own address (fine for testing).
@@ -11,7 +12,7 @@ export const mailEnabled = Boolean(RESEND_API_KEY);
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-async function send(message, attempt = 1) {
+async function sendResend(message, attempt = 1) {
   const res = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: { Authorization: `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
@@ -20,12 +21,39 @@ async function send(message, attempt = 1) {
   });
   if (res.status === 429 && attempt < 5) {
     await sleep((Number(res.headers.get("retry-after")) || attempt) * 1000);
-    return send(message, attempt + 1);
+    return sendResend(message, attempt + 1);
   }
   const body = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(`Resend ${res.status}: ${body.message || "request failed"}`);
-  return body.id;
 }
+
+// Sends one email and logs it, so the daily limit can count it.
+async function send(kind, message) {
+  await sendResend(message);
+  await MailLog.create({ kind }).catch((err) => console.error("[mail] could not log email:", err.message));
+}
+
+const DAY = 24 * 60 * 60 * 1000;
+
+// How many more emails fit in the last 24 hours, and (when none) when the next one will.
+export async function mailQuota() {
+  const [settings, used] = await Promise.all([
+    Settings.load(),
+    MailLog.countDocuments({ at: { $gt: new Date(Date.now() - DAY) } }),
+  ]);
+  const limit = settings.mail?.dailyLimit || 300;
+  const left = Math.max(0, limit - used);
+  let freeAt = null;
+  if (!left) {
+    // Room frees up when the email that took us to the limit is 24 hours old.
+    const edge = await MailLog.findOne({ at: { $gt: new Date(Date.now() - DAY) } }).sort({ at: 1 }).skip(used - limit);
+    freeAt = edge ? new Date(edge.at.getTime() + DAY) : new Date(Date.now() + 60 * 60 * 1000);
+  }
+  return { limit, used, left, freeAt };
+}
+
+// The provider refusing because its own daily / rate limit is used up (as opposed to a bad address).
+export const isLimitError = (message = "") => /quota|limit|5\.4\.5|too many/i.test(message);
 
 const esc = (s = "") =>
   String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
@@ -53,22 +81,14 @@ const PASS_QR_ID = "bhojan-pass-qr";
 export const certificateUrl = (token, site) => `${site}/api/certificate/${token}`;
 
 const templates = {
-  received: (r) => ({
-    subject: `Registration received – ${r.regNo} | ABRSM State Conference 2026`,
-    html: layout(`
-      <p>Dear ${esc(r.fullName)},</p>
-      <p>We have received your registration. Once the organising team verifies your payment, your Bhojan Pass will be emailed to you and will also appear in your account on the website.</p>
-      <table style="border-collapse:collapse;margin:12px 0">${row("Registration No", r.regNo)}${row("Bhojan Pass fee", rupees(FEE))}${r.donation ? row("Sahay Shulk (helping fund)", rupees(r.donation)) : ""}${row("Total paid", rupees(r.amount))}</table>`),
-  }),
-
-  // Bhojan Pass, sent by admins after verifying the payment. The QR code is embedded in the email (cid:)
-  // so it shows without loading remote images.
-  pass: async (r, site) => ({
+  // Bhojan Pass, sent by admins after verifying the payment, with the fee receipt attached as a PDF.
+  // The QR code is embedded in the email (cid:) so it shows without loading remote images.
+  pass: async (r, site, { payee } = {}) => ({
     subject: `Registration confirmed + Bhojan Pass – ${r.regNo} | ABRSM State Conference 2026`,
     html: layout(`
       <p>Dear ${esc(r.fullName)},</p>
       <p>Thank you for registering for the ABRSM Gujarat State Conference 2026. Your payment is confirmed.</p>
-      <table style="border-collapse:collapse;margin:12px 0">${row("Registration No", r.regNo)}${row("Date", EVENT.dateEn)}${row("Venue", EVENT.venueEn)}</table>
+      <table style="border-collapse:collapse;margin:12px 0">${row("Registration No", r.regNo)}${row("Amount paid", rupees(r.amount))}${row("Date", EVENT.dateEn)}${row("Venue", EVENT.venueEn)}</table>
       <div style="border:2px solid #a4380f;border-radius:12px;padding:20px;text-align:center;margin:20px 0">
         <div style="font-weight:bold;font-size:18px;color:#a4380f">Bhojan Pass</div>
         <img src="cid:${PASS_QR_ID}" width="220" height="220" alt="Bhojan Pass QR code" style="display:block;margin:12px auto">
@@ -76,13 +96,21 @@ const templates = {
         <p style="margin:8px 0 16px">Show this QR code at the food counter.</p>
         ${button(passUrl(r.pass.token, site), "Open Bhojan Pass")}
       </div>
-      <p style="color:#6b625b;font-size:13px">Please keep this email. You can also open the pass any time by logging in to the website. Your certificate of participation will be emailed to you after the conference.</p>`),
-    attachments: [{
-      filename: `${r.regNo}-bhojan-pass.png`,
-      content: (await passQrPng(r.pass.token, site)).toString("base64"),
-      content_type: "image/png",
-      content_id: PASS_QR_ID,
-    }],
+      <p>The receipt for your fees is attached to this email as a PDF.</p>
+      <p style="color:#6b625b;font-size:13px">Please keep this email. You can also open the pass and download the receipt any time by logging in to the website. Your certificate of participation will be emailed to you after the conference.</p>`),
+    attachments: [
+      {
+        filename: `${r.regNo}-bhojan-pass.png`,
+        content: (await passQrPng(r.pass.token, site)).toString("base64"),
+        content_type: "image/png",
+        content_id: PASS_QR_ID,
+      },
+      {
+        filename: receiptFilename(r),
+        content: (await receiptPdf(r, payee)).toString("base64"),
+        content_type: "application/pdf",
+      },
+    ],
   }),
 
   rejected: (r) => ({
@@ -126,7 +154,7 @@ export async function notify(kind, to, { origin, ...extra } = {}) {
   }
   try {
     const { subject, html, attachments } = await templates[kind](to, siteUrl(origin), extra);
-    await send({ to: [to.email], subject, html, attachments });
+    await send(kind, { to: [to.email], subject, html, attachments });
     return true;
   } catch (err) {
     console.error(`[mail] ${kind} to ${to.email} failed:`, err.message);
@@ -134,7 +162,7 @@ export async function notify(kind, to, { origin, ...extra } = {}) {
   }
 }
 
-// Issues the Bhojan Pass (it then shows in the participant's account) and emails it.
+// Issues the Bhojan Pass (it then shows in the participant's account) and emails it with the fee receipt.
 // Records the result on the registration so a broadcast can carry on where it stopped.
 export async function sendPass(reg, origin) {
   const issuedAt = reg.pass?.issuedAt || new Date();
@@ -144,8 +172,9 @@ export async function sendPass(reg, origin) {
   }
   if (!mailEnabled) return { sent: false, error: "Email is not set up on the server (RESEND_API_KEY)." };
   try {
-    const { subject, html, attachments } = await templates.pass(reg, siteUrl(origin));
-    await send({ to: [reg.email], subject, html, attachments });
+    const payee = payeeOf(await Settings.load());
+    const { subject, html, attachments } = await templates.pass(reg, siteUrl(origin), { payee });
+    await send("pass", { to: [reg.email], subject, html, attachments });
     const emailedAt = new Date();
     reg.set("pass.emailedAt", emailedAt);
     reg.set("pass.lastError", undefined);
@@ -164,7 +193,7 @@ export async function sendCertificate(reg, { origin, signatories }) {
   if (!mailEnabled) return { sent: false, error: "Email is not set up on the server (RESEND_API_KEY)." };
   try {
     const { subject, html, attachments } = await templates.certificate(reg, siteUrl(origin), { signatories });
-    await send({ to: [reg.email], subject, html, attachments });
+    await send("certificate", { to: [reg.email], subject, html, attachments });
     await Registration.updateOne({ _id: reg._id }, { $set: { "certificate.emailedAt": new Date() }, $unset: { "certificate.lastError": "" } });
     return { sent: true };
   } catch (err) {

@@ -53,7 +53,7 @@ Go to **Payment & settings** and:
 
 Two ways, both from **Registrations**:
 - **One at a time:** open a verified registration and click **Send Bhojan Pass** (or **Email pass again**).
-- **Broadcast:** the *Bhojan Pass* panel at the top shows how many verified participants have been emailed. **Broadcast to N** emails everyone verified who hasn't received it yet, about one per second; you can leave the page while it runs. Failed sends are listed and retried by broadcasting again, which never re-sends to people who already got theirs.
+- **Broadcast:** the *Bhojan Pass* panel at the top shows how many verified participants have been emailed. **Broadcast to N** emails everyone verified who hasn't received it yet, within the daily email limit (see *Daily email limit* below); you can leave the page while it runs. Failed sends are listed and retried by broadcasting again, which never re-sends to people who already got theirs.
 
 The table's *Bhojan Pass* column shows who has been emailed. Without email set up, **Send Bhojan Pass** still puts the pass in the participant's account (the broadcast needs email). A pass link or QR only works once the pass has been sent, and shows **NOT VALID** if the registration is later moved out of *verified*.
 
@@ -61,23 +61,24 @@ The table's *Bhojan Pass* column shows who has been emailed. Without email set u
 
 Set `RESEND_API_KEY` in `server/.env` (Resend → API Keys). The site then emails:
 
-- **Registration received**: right after the form is submitted.
-- **Confirmation + Bhojan Pass**: when an organiser sends it (see above). The QR code is inside the email, with a link to `/pass/<code>`.
+- **Confirmation + Bhojan Pass**, with the fee receipt (PDF) attached: when an organiser sends it (see above). The QR code is inside the email, with a link to `/pass/<code>`.
 - **Password reset**: when a participant uses *Forgot password*.
 - **Rejected**: with the admin's note.
 - **Certificate of participation**: after the conference (see below).
 
 **Before going live, verify a sending domain.** In Resend → Domains, add your domain (for example `abrsmgujarat.org`), add the DNS records it shows, and wait until it says *Verified*. Then set `MAIL_FROM="ABRSM Gujarat <noreply@abrsmgujarat.org>"`. Until then, leave `MAIL_FROM` on `onboarding@resend.dev`: Resend only delivers those emails to the address you signed up to Resend with, so they are only useful for testing. A Gmail address cannot be used as `MAIL_FROM`. Set `MAIL_REPLY_TO` if participants should be able to reply to a real inbox.
 
-Also check your Resend plan's daily limit (the free plan allows 100 emails a day) before sending certificates to everyone.
+### Daily email limit
 
-Without `RESEND_API_KEY`, the app still works, but nothing is emailed: passes only appear in participants' accounts, and *Forgot password* asks people to call the organisers.
+**Payment & settings → Email sending limit** sets the most emails the site sends in any 24 hours (default 300). Bhojan Pass broadcasts and certificates go out in phases: they send until the limit is reached, pause, and carry on by themselves once room frees up in the rolling 24 hours (also after a server restart). The panels show progress, emails used in the last 24 hours, when sending resumes, and a *Stop sending* link. Single emails (one pass, a password reset, a rejection) always go out and count towards the limit, so keep it within your Resend plan: the free plan allows 100 emails a day and 3,000 a month; Pro has no daily limit.
+
+Without email set up, the app still works, but nothing is emailed: passes only appear in participants' accounts, and *Forgot password* asks people to call the organisers.
 
 ## Certificates
 
 After the conference, go to **Payment & settings → Certificates**:
 1. Add up to three signatories (name and role), click **Save changes**, then **preview the certificate**.
-2. Click **Send certificates**. Every confirmed participant gets an email with their certificate as a PDF, one every second or so, and the page shows progress. If some fail, or the server restarts, click the button again; it only sends to people who haven't received theirs yet.
+2. Click **Send certificates**. Every confirmed participant gets an email with their certificate as a PDF, in daily phases within the email limit, and the page shows progress. If some fail, click the button again; it only sends to people who haven't received theirs yet.
 
 Once certificates have been sent, participants can also download theirs under **My registration**. A single certificate can be previewed or emailed again from the registration drawer.
 

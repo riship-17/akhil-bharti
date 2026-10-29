@@ -74,14 +74,19 @@ export function certificatePng(r, signatories) {
   return sharp(Buffer.from(certificateSvg(r, signatories)), { density: 144 }).png().toBuffer();
 }
 
-export async function certificatePdf(r, signatories) {
+// One-page PDF holding a rendered PNG that fills the page. `size` is in points.
+export async function pngPdf(pngBuffer, size, title) {
   const pdf = await PDFDocument.create();
-  pdf.setTitle(`Certificate – ${r.fullName}`);
+  pdf.setTitle(title);
   pdf.setAuthor(EVENT.orgEn);
-  const png = await pdf.embedPng(await certificatePng(r, signatories));
-  const page = pdf.addPage([841.89, 595.28]); // A4 landscape in points
+  const png = await pdf.embedPng(pngBuffer);
+  const page = pdf.addPage(size);
   page.drawImage(png, { x: 0, y: 0, width: page.getWidth(), height: page.getHeight() });
   return Buffer.from(await pdf.save());
+}
+
+export async function certificatePdf(r, signatories) {
+  return pngPdf(await certificatePng(r, signatories), [841.89, 595.28], `Certificate – ${r.fullName}`); // A4 landscape
 }
 
 export const certificateFilename = (r) => `${r.regNo}-certificate.pdf`;

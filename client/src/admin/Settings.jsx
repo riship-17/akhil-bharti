@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { upload } from "../api.js";
 import { upiLink } from "../components/PaymentPanel.jsx";
+import { BulkProgress, useBulk } from "./Bulk.jsx";
 
 const FIELDS = [
   ["upiId", "UPI ID", "The organiser's PhonePe UPI is 9879930825-4@ybl. The site turns this into a QR code with the participant's total (₹500 + any Sahay Shulk) pre-filled, unless you upload a QR image above."],
@@ -129,6 +130,18 @@ export default function Settings({ call, token }) {
         )}
       </section>
 
+      <section className="panel">
+        <h2>Email sending limit</h2>
+        <p className="muted small">
+          The most emails the site sends in any 24 hours. Bhojan Pass broadcasts and certificates go out in phases: they pause at
+          this limit and carry on by themselves once room frees up. Keep it within your Resend plan (the free plan allows 100 a day
+          and 3,000 a month; Pro has no daily limit), leaving room for single emails like a pass or a password reset.
+        </p>
+        <label className="field-label" htmlFor="dailyLimit"><span className="field-en">Emails per 24 hours</span></label>
+        <input id="dailyLimit" type="number" min="10" max="100000" value={s.mail?.dailyLimit ?? 300}
+          onChange={(e) => setS({ ...s, mail: { ...s.mail, dailyLimit: Number(e.target.value) } })} />
+      </section>
+
       <Certificates s={s} setS={setS} call={call} token={token} />
 
       <div className="save-bar">
@@ -140,38 +153,14 @@ export default function Settings({ call, token }) {
 }
 
 function Certificates({ s, setS, call, token }) {
-  const [info, setInfo] = useState(null);
+  const { info, msg, act } = useBulk(call, "/admin/certificates");
   const [confirm, setConfirm] = useState(false);
-  const [msg, setMsg] = useState("");
   const signatories = s.certificate?.signatories || [];
   const setSignatories = (list) => setS({ ...s, certificate: { ...s.certificate, signatories: list } });
   const setSign = (i, k) => (e) => setSignatories(signatories.map((x, j) => (j === i ? { ...x, [k]: e.target.value } : x)));
 
-  useEffect(() => {
-    let timer;
-    const load = () =>
-      call("/admin/certificates")
-        .then((d) => {
-          setInfo(d);
-          if (d.run?.running) timer = setTimeout(load, 3000);
-        })
-        .catch((e) => setMsg(e.message));
-    load();
-    return () => clearTimeout(timer);
-  }, [call, info?.run?.startedAt]);
-
-  async function sendAll() {
-    setConfirm(false);
-    setMsg("");
-    try {
-      setInfo(await call("/admin/certificates/send", { method: "POST" }));
-    } catch (err) {
-      setMsg(err.message);
-    }
-  }
-
-  const run = info?.run;
   const remaining = info ? info.verified - info.sent : 0;
+  const today = Math.min(remaining, info?.quota?.left ?? remaining);
 
   return (
     <section className="panel">
@@ -201,15 +190,20 @@ function Certificates({ s, setS, call, token }) {
         <div className="panel-row">
           <div>
             <p><b>{info.sent}</b> of <b>{info.verified}</b> confirmed participants have been emailed their certificate.{info.failed > 0 && <> <b>{info.failed}</b> failed — send again to retry them.</>}</p>
-            {run?.running && <p className="muted small">Sending… {run.sent + run.failed} of {run.total} done. You can leave this page; it keeps going.</p>}
-            {run && !run.running && run.total > 0 && <p className="muted small">Last run: {run.sent} sent, {run.failed} failed.{run.error && ` Stopped: ${run.error}`}</p>}
+            <BulkProgress info={info} noun="certificates" onStop={() => act("stop")} />
             {!info.mailEnabled && <p className="muted small">Email is not set up on the server (RESEND_API_KEY).</p>}
           </div>
           {confirm ? (
-            <button type="button" className="btn green" onClick={sendAll}>Yes, email {remaining} certificate{remaining === 1 ? "" : "s"}</button>
+            <div className="broadcast-confirm">
+              <button type="button" className="btn green" onClick={() => { setConfirm(false); act("send"); }}>
+                Yes, email {remaining} certificate{remaining === 1 ? "" : "s"}
+              </button>
+              {today < remaining && <span className="muted small">{today} now, the rest automatically within the daily limit</span>}
+              <button type="button" className="link" onClick={() => setConfirm(false)}>Cancel</button>
+            </div>
           ) : (
-            <button type="button" className="btn" disabled={!info.mailEnabled || run?.running || remaining === 0} onClick={() => setConfirm(true)}>
-              {run?.running ? "Sending…" : remaining === 0 ? "All sent" : info.sent ? `Send to remaining ${remaining}` : "Send certificates"}
+            <button type="button" className="btn" disabled={!info.mailEnabled || info.queued || remaining === 0} onClick={() => setConfirm(true)}>
+              {info.run?.running ? "Sending…" : info.queued ? "Sending in phases" : remaining === 0 ? "All sent" : info.sent ? `Send to remaining ${remaining}` : "Send certificates"}
             </button>
           )}
         </div>
