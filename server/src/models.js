@@ -106,6 +106,16 @@ const settingsSchema = new mongoose.Schema(
       // Set when admins first send certificates; from then on participants can also download theirs.
       releasedAt: Date,
     },
+    mail: {
+      // Most emails sent in any 24 hours. Bulk sends pause at this limit and carry on by themselves later;
+      // keep it below the email provider's own daily limit so single emails (a pass, a password reset) still go out.
+      dailyLimit: { type: Number, default: 300 },
+      // Bulk sends in progress (see lib/bulk.js), kept here so they carry on after a server restart.
+      queue: {
+        passes: { since: Date, origin: String },
+        certificates: { since: Date, origin: String },
+      },
+    },
   },
   { timestamps: true }
 );
@@ -115,3 +125,14 @@ settingsSchema.statics.load = function () {
 };
 
 export const Settings = mongoose.model("Settings", settingsSchema);
+
+// One row per email sent, kept for two days, to count the last 24 hours against the daily limit.
+const mailLogSchema = new mongoose.Schema(
+  {
+    kind: String,
+    at: { type: Date, default: Date.now, expires: 2 * 24 * 60 * 60 },
+  },
+  { versionKey: false }
+);
+
+export const MailLog = mongoose.model("MailLog", mailLogSchema);

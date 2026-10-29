@@ -50,5 +50,8 @@ await mongoose.connect(process.env.MONGODB_URI);
 // The form no longer asks for a UTR, so the old unique index on it would reject every registration after the first.
 const { Registration } = await import("./models.js");
 await Registration.collection.dropIndex("utr_1").catch(() => {});
+// Carry on bulk emails (passes, certificates) that were waiting for the daily limit or cut off by a restart.
+const { startBulkScheduler } = await import("./lib/bulk.js");
+startBulkScheduler();
 const port = Number(process.env.PORT) || 5050;
 app.listen(port, () => console.log(`API ready on http://localhost:${port}`));

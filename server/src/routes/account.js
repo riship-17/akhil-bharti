@@ -152,7 +152,6 @@ router.post("/register", requireUser, limit(15, 20), uploader().single("receipt"
     throw err;
   }
 
-  notify("received", reg);
   res.status(201).json({
     regNo: reg.regNo, fullName: reg.fullName, email: reg.email, status: reg.status, amount: reg.amount, donation: reg.donation,
   });

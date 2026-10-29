@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { DISTRICTS, rupees } from "../../../shared/constants.js";
+import { BulkProgress, useBulk } from "./Bulk.jsx";
 import Detail from "./Detail.jsx";
 
 const TABS = [
@@ -162,46 +163,22 @@ export default function Registrations({ call, token }) {
   );
 }
 
-// Emails the Bhojan Pass to every verified participant who hasn't received it yet.
+// Emails the Bhojan Pass to every verified participant who hasn't received it yet, in daily phases.
 function PassBroadcast({ call, stats, onDone }) {
-  const [info, setInfo] = useState(null);
+  const { info, msg, act } = useBulk(call, "/admin/passes", stats);
   const [confirm, setConfirm] = useState(false);
-  const [msg, setMsg] = useState("");
   const wasRunning = useRef(false);
 
-  useEffect(() => {
-    let timer;
-    const poll = () =>
-      call("/admin/passes")
-        .then((d) => {
-          setInfo(d);
-          if (d.run?.running) timer = setTimeout(poll, 3000);
-        })
-        .catch((e) => setMsg(e.message));
-    poll();
-    return () => clearTimeout(timer);
-  }, [call, stats, info?.run?.startedAt]);
-
-  // Reload the table once a broadcast finishes, so the Bhojan Pass column is up to date.
+  // Reload the table after each phase, so the Bhojan Pass column is up to date.
   useEffect(() => {
     const running = Boolean(info?.run?.running);
     if (wasRunning.current && !running) onDone();
     wasRunning.current = running;
   }, [info, onDone]);
 
-  async function broadcast() {
-    setConfirm(false);
-    setMsg("");
-    try {
-      setInfo(await call("/admin/passes/send", { method: "POST" }));
-    } catch (err) {
-      setMsg(err.message);
-    }
-  }
-
   if (!info) return null;
-  const run = info.run;
   const remaining = info.verified - info.sent;
+  const today = Math.min(remaining, info.quota?.left ?? remaining);
 
   return (
     <section className="panel broadcast">
@@ -212,18 +189,20 @@ function PassBroadcast({ call, stats, onDone }) {
             <b>{info.sent}</b> of <b>{info.verified}</b> verified participants have been emailed their pass.
             {info.failed > 0 && <> <b>{info.failed}</b> failed — broadcast again to retry them.</>}
           </p>
-          {run?.running && <p className="muted small">Sending… {run.sent + run.failed} of {run.total} done. You can leave this page; it keeps going.</p>}
-          {run && !run.running && run.total > 0 && <p className="muted small">Last broadcast: {run.sent} sent, {run.failed} failed.{run.error && ` Stopped: ${run.error}`}</p>}
+          <BulkProgress info={info} noun="passes" onStop={() => act("stop")} />
           <p className="muted small">To send one pass, open a verified registration and click <i>Send Bhojan Pass</i>. A broadcast only goes to people who haven't been emailed yet.</p>
         </div>
         {confirm ? (
           <div className="broadcast-confirm">
-            <button type="button" className="btn green" onClick={broadcast}>Yes, email {remaining} pass{remaining === 1 ? "" : "es"}</button>
+            <button type="button" className="btn green" onClick={() => { setConfirm(false); act("send"); }}>
+              Yes, email {remaining} pass{remaining === 1 ? "" : "es"}
+            </button>
+            {today < remaining && <span className="muted small">{today} now, the rest automatically within the daily limit</span>}
             <button type="button" className="link" onClick={() => setConfirm(false)}>Cancel</button>
           </div>
         ) : (
-          <button type="button" className="btn" disabled={!info.mailEnabled || run?.running || remaining === 0} onClick={() => setConfirm(true)}>
-            {run?.running ? "Sending…" : remaining === 0 ? "All passes sent" : `Broadcast to ${remaining}`}
+          <button type="button" className="btn" disabled={!info.mailEnabled || info.queued || remaining === 0} onClick={() => setConfirm(true)}>
+            {info.run?.running ? "Sending…" : info.queued ? "Sending in phases" : remaining === 0 ? "All passes sent" : `Broadcast to ${remaining}`}
           </button>
         )}
       </div>

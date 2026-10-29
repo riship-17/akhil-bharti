@@ -1,5 +1,5 @@
-import { EVENT, FEE, rupees } from "../../../shared/constants.js";
-import { Registration, Settings } from "../models.js";
+import { EVENT, rupees } from "../../../shared/constants.js";
+import { MailLog, Registration, Settings } from "../models.js";
 import { certificateFilename, certificatePdf } from "./certificate.js";
 import { passQrPng, passUrl, siteUrl } from "./pass.js";
 import { payeeOf, receiptFilename, receiptPdf } from "./receipt.js";
@@ -12,7 +12,7 @@ export const mailEnabled = Boolean(RESEND_API_KEY);
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-async function send(message, attempt = 1) {
+async function sendResend(message, attempt = 1) {
   const res = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: { Authorization: `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
@@ -21,12 +21,39 @@ async function send(message, attempt = 1) {
   });
   if (res.status === 429 && attempt < 5) {
     await sleep((Number(res.headers.get("retry-after")) || attempt) * 1000);
-    return send(message, attempt + 1);
+    return sendResend(message, attempt + 1);
   }
   const body = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(`Resend ${res.status}: ${body.message || "request failed"}`);
-  return body.id;
 }
+
+// Sends one email and logs it, so the daily limit can count it.
+async function send(kind, message) {
+  await sendResend(message);
+  await MailLog.create({ kind }).catch((err) => console.error("[mail] could not log email:", err.message));
+}
+
+const DAY = 24 * 60 * 60 * 1000;
+
+// How many more emails fit in the last 24 hours, and (when none) when the next one will.
+export async function mailQuota() {
+  const [settings, used] = await Promise.all([
+    Settings.load(),
+    MailLog.countDocuments({ at: { $gt: new Date(Date.now() - DAY) } }),
+  ]);
+  const limit = settings.mail?.dailyLimit || 300;
+  const left = Math.max(0, limit - used);
+  let freeAt = null;
+  if (!left) {
+    // Room frees up when the email that took us to the limit is 24 hours old.
+    const edge = await MailLog.findOne({ at: { $gt: new Date(Date.now() - DAY) } }).sort({ at: 1 }).skip(used - limit);
+    freeAt = edge ? new Date(edge.at.getTime() + DAY) : new Date(Date.now() + 60 * 60 * 1000);
+  }
+  return { limit, used, left, freeAt };
+}
+
+// The provider refusing because its own daily / rate limit is used up (as opposed to a bad address).
+export const isLimitError = (message = "") => /quota|limit|5\.4\.5|too many/i.test(message);
 
 const esc = (s = "") =>
   String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
@@ -54,14 +81,6 @@ const PASS_QR_ID = "bhojan-pass-qr";
 export const certificateUrl = (token, site) => `${site}/api/certificate/${token}`;
 
 const templates = {
-  received: (r) => ({
-    subject: `Registration received – ${r.regNo} | ABRSM State Conference 2026`,
-    html: layout(`
-      <p>Dear ${esc(r.fullName)},</p>
-      <p>We have received your registration. Once the organising team verifies your payment, your Bhojan Pass will be emailed to you and will also appear in your account on the website.</p>
-      <table style="border-collapse:collapse;margin:12px 0">${row("Registration No", r.regNo)}${row("Bhojan Pass fee", rupees(FEE))}${r.donation ? row("Sahay Shulk (helping fund)", rupees(r.donation)) : ""}${row("Total paid", rupees(r.amount))}</table>`),
-  }),
-
   // Bhojan Pass, sent by admins after verifying the payment, with the fee receipt attached as a PDF.
   // The QR code is embedded in the email (cid:) so it shows without loading remote images.
   pass: async (r, site, { payee } = {}) => ({
@@ -135,7 +154,7 @@ export async function notify(kind, to, { origin, ...extra } = {}) {
   }
   try {
     const { subject, html, attachments } = await templates[kind](to, siteUrl(origin), extra);
-    await send({ to: [to.email], subject, html, attachments });
+    await send(kind, { to: [to.email], subject, html, attachments });
     return true;
   } catch (err) {
     console.error(`[mail] ${kind} to ${to.email} failed:`, err.message);
@@ -155,7 +174,7 @@ export async function sendPass(reg, origin) {
   try {
     const payee = payeeOf(await Settings.load());
     const { subject, html, attachments } = await templates.pass(reg, siteUrl(origin), { payee });
-    await send({ to: [reg.email], subject, html, attachments });
+    await send("pass", { to: [reg.email], subject, html, attachments });
     const emailedAt = new Date();
     reg.set("pass.emailedAt", emailedAt);
     reg.set("pass.lastError", undefined);
@@ -174,7 +193,7 @@ export async function sendCertificate(reg, { origin, signatories }) {
   if (!mailEnabled) return { sent: false, error: "Email is not set up on the server (RESEND_API_KEY)." };
   try {
     const { subject, html, attachments } = await templates.certificate(reg, siteUrl(origin), { signatories });
-    await send({ to: [reg.email], subject, html, attachments });
+    await send("certificate", { to: [reg.email], subject, html, attachments });
     await Registration.updateOne({ _id: reg._id }, { $set: { "certificate.emailedAt": new Date() }, $unset: { "certificate.lastError": "" } });
     return { sent: true };
   } catch (err) {
