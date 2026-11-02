@@ -337,7 +337,7 @@ function Picker({ id, label, icon, options, value, onChange, error, placeholder,
   const [q, setQ] = useState("");
   const selected = options.find((x) => x.value === value);
   const query = q.trim().toLowerCase();
-  const list = query ? options.filter((x) => x.en.toLowerCase().includes(query)) : options;
+  const list = query ? options.filter((x) => (x.en + " " + x.value).toLowerCase().includes(query)) : options;
 
   function pick(v) {
     onChange(v);
