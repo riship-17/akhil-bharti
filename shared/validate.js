@@ -10,6 +10,8 @@ const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 const has = (list, v) => list.some((x) => x.value === v);
 const str = (v) => (typeof v === "string" ? v.trim() : "");
 
+export const validEmail = (e) => EMAIL.test(e) && e.length <= 200;
+
 // Accepts "98765 43210", "+91 9876543210", "09876543210" → "9876543210"
 export function normalizeMobile(v) {
   let d = str(v).replace(/\D/g, "");
