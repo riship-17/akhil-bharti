@@ -46,7 +46,8 @@ export const DISTRICTS = [
 ].map(([en]) => ({ value: en, en }));
 
 // University units of ABRSM Gujarat, listed alphabetically with Other last. College cadre members pick the
-// university their college is affiliated to.
+// university their college is affiliated to. An entry is a name, or [stored value, name] when the name changed
+// after registrations were saved, so those registrations still match.
 export const UNIVERSITIES = [
   "M. S. University, Vadodara",
   "Birsa Munda Tribal University, Rajpipla",
@@ -57,7 +58,7 @@ export const UNIVERSITIES = [
   "Saurashtra University, Rajkot",
   "Krantiguru Shyamji Krishna Verma Kachchh University",
   "Govind Guru University, Godhra",
-  "HNGU, Patan",
+  ["HNGU, Patan", "Hemchandracharya North Gujarat University, Patan"],
   "Central University of Gujarat",
   "VNSGU, Surat",
   "Dr. Babasaheb Ambedkar Open University, Ahmedabad",
@@ -79,8 +80,8 @@ export const UNIVERSITIES = [
   "Children's Research University, Gandhinagar",
   "Kaushalya – The Skill University, Ahmedabad",
 ]
-  .sort((a, b) => a.localeCompare(b, "en"))
-  .map((en) => ({ value: en, en }))
+  .map((u) => (Array.isArray(u) ? { value: u[0], en: u[1] } : { value: u, en: u }))
+  .sort((a, b) => a.en.localeCompare(b.en, "en"))
   .concat({ value: "other", en: "Other" });
 
 export const STATUSES = ["pending", "verified", "rejected"];
