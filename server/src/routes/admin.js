@@ -3,7 +3,8 @@ import { Router } from "express";
 import rateLimit from "express-rate-limit";
 import mongoose from "mongoose";
 import { CADRES, FEE, STATUSES, UPI, designationText, labelOf, universityText } from "../../../shared/constants.js";
-import { Registration, Settings } from "../models.js";
+import { Registration, Settings, User } from "../models.js";
+import { validEmail } from "../../../shared/validate.js";
 import { deleteFile, saveFile, sendFile, uploader } from "../lib/files.js";
 import { mailEnabled, notify, sendCertificate, sendPass } from "../lib/mail.js";
 import { bulkStatus, ensurePassToken, queueBulk, stopBulk } from "../lib/bulk.js";
@@ -123,6 +124,36 @@ router.patch("/registrations/:id", async (req, res) => {
   // Verifying doesn't email anything: the Bhojan Pass is sent separately (one by one or as a broadcast).
   const emailed = changed && status === "rejected" ? await notify("rejected", r) : false;
   res.json({ registration: await Registration.findById(r._id), emailed });
+});
+
+// Correct a mistyped email. The participant's account changes too, so they log in with the new email
+// and every later email (pass, certificate, password reset) goes there.
+router.put("/registrations/:id/email", async (req, res) => {
+  const r = await findReg(req, res);
+  if (!r) return;
+  const email = String(req.body?.email || "").trim().toLowerCase();
+  if (!validEmail(email)) return res.status(400).json({ error: "Enter a valid email address." });
+  if (email === r.email) return res.json({ registration: r });
+
+  const [otherUser, otherReg] = await Promise.all([
+    User.findOne(r.user ? { email, _id: { $ne: r.user } } : { email }),
+    Registration.findOne({ email, _id: { $ne: r._id }, status: { $ne: "rejected" } }),
+  ]);
+  if (otherUser || otherReg) {
+    return res.status(409).json({ error: `${email} is already used by ${otherReg ? `registration ${otherReg.regNo}` : "another account"}.` });
+  }
+
+  if (r.user) {
+    try {
+      await User.updateOne({ _id: r.user }, { $set: { email } });
+    } catch (err) {
+      if (err.code === 11000) return res.status(409).json({ error: `${email} is already used by another account.` });
+      throw err;
+    }
+  }
+  r.email = email;
+  await r.save();
+  res.json({ registration: await Registration.findById(r._id) });
 });
 
 // Send (or resend) one participant's Bhojan Pass by email. Without email set up, the pass is still

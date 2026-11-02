@@ -7,11 +7,13 @@ export default function Detail({ reg: r, call, token, onClose, onChanged }) {
   const [busy, setBusy] = useState("");
   const [msg, setMsg] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [email, setEmail] = useState(null); // null when not editing
 
   useEffect(() => {
     setNote(r.adminNote || "");
     setMsg("");
     setConfirmDelete(false);
+    setEmail(null);
   }, [r._id]);
 
   useEffect(() => {
@@ -46,6 +48,25 @@ export default function Detail({ reg: r, call, token, onClose, onChanged }) {
       const { registration } = await call(`/admin/registrations/${r._id}`, { method: "PATCH", body: { adminNote: note } });
       onChanged(registration);
       setMsg("Note saved.");
+    } catch (err) {
+      setMsg(err.message);
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function saveEmail(e) {
+    e.preventDefault();
+    setBusy("email");
+    setMsg("");
+    try {
+      const { registration } = await call(`/admin/registrations/${r._id}/email`, { method: "PUT", body: { email } });
+      onChanged(registration);
+      setEmail(null);
+      setMsg(
+        `Email changed to ${registration.email}. The participant now logs in with it.` +
+          (registration.pass?.emailedAt ? " Click “Email pass again” to send the Bhojan Pass there." : "")
+      );
     } catch (err) {
       setMsg(err.message);
     } finally {
@@ -92,7 +113,19 @@ export default function Detail({ reg: r, call, token, onClose, onChanged }) {
   const isPdf = r.receipt?.contentType === "application/pdf";
 
   const rows = [
-    ["Email", r.email],
+    [
+      "Email",
+      email === null ? (
+        <>{r.email} <button className="link" onClick={() => setEmail(r.email)} disabled={!!busy}>Edit</button></>
+      ) : (
+        <form onSubmit={saveEmail}>
+          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoFocus aria-label="New email" />
+          <button className="link" disabled={!!busy || !email.trim()}>{busy === "email" ? "Saving…" : "Save"}</button>
+          {" · "}
+          <button type="button" className="link" onClick={() => setEmail(null)} disabled={!!busy}>Cancel</button>
+        </form>
+      ),
+    ],
     ["Mobile", r.mobile],
     ["Alternative contact", r.altContact],
     ["Cadre", labelOf(CADRES, r.cadre)],
