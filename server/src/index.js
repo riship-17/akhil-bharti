@@ -5,6 +5,12 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import express from "express";
 import mongoose from "mongoose";
+import sharp from "sharp";
+
+// Render's instance has 512 MB. libvips' cache and thread pool keep the large receipt / certificate images
+// (2480 × 3508 px) in memory between bulk emails until the process is killed, so turn both down.
+sharp.cache(false);
+sharp.concurrency(1);
 
 for (const key of ["MONGODB_URI", "ADMIN_PASSWORD", "JWT_SECRET"]) {
   if (!process.env[key]) {
