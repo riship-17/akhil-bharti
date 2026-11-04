@@ -5,7 +5,7 @@ import { pngPdf } from "./certificate.js";
 // like the certificate (certificate.js sets up the fonts before sharp loads, so it is imported first).
 const { default: sharp } = await import("sharp");
 
-const W = 1240; // A4 portrait at 150 dpi; rendered at 2× for print quality
+const W = 1240; // A4 portrait at 150 dpi
 const H = 1754;
 const BRAND = "#a4380f";
 const INK = "#1f1a17";
@@ -152,8 +152,9 @@ export function receiptSvg(r, { payeeName, upiId, bank } = {}) {
 }
 
 export async function receiptPdf(r, payee) {
-  // density 144 = 2× the SVG's 72 dpi size → 2480 × 3508 px, i.e. 300 dpi on A4
-  const png = await sharp(Buffer.from(receiptSvg(r, payee)), { density: 144 }).png().toBuffer();
+  // Rendered at the SVG's own size (1240 × 1754 px, 150 dpi on A4): sharp per email in a bulk send at 2× needed
+  // four times the memory and pushed the 512 MB instance over its limit. 150 dpi still prints the text clearly.
+  const png = await sharp(Buffer.from(receiptSvg(r, payee))).png().toBuffer();
   return pngPdf(png, [595.28, 841.89], `Fee receipt – ${r.regNo}`); // A4 portrait
 }
 
