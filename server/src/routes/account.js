@@ -144,6 +144,7 @@ router.post("/register", requireUser, limit(15, 20), uploader().single("receipt"
       user: user._id,
       amount: FEE + donation,
       donation,
+      payMode: req.body?.payMode === "bank" ? "bank" : "upi",
       regNo: await nextRegNo(),
       receipt: { fileId, filename: receipt.originalname, contentType: receipt.mimetype, size: receipt.size },
     });

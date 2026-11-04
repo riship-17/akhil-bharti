@@ -1,6 +1,6 @@
 import { Router } from "express";
 import rateLimit from "express-rate-limit";
-import { FEE, UPI, designationText } from "../../../shared/constants.js";
+import { FEE, UPI, bankOf, designationText } from "../../../shared/constants.js";
 import { Registration, Settings } from "../models.js";
 import { sendFile } from "../lib/files.js";
 import { mailEnabled } from "../lib/mail.js";
@@ -17,10 +17,7 @@ router.get("/config", async (req, res) => {
     registrationOpen: s.registrationOpen,
     upiId: s.upiId || UPI.id,
     payeeName: s.payeeName || UPI.payee,
-    accountName: s.accountName,
-    bankName: s.bankName,
-    accountNo: s.accountNo,
-    ifsc: s.ifsc,
+    ...bankOf(s),
     contacts: s.contacts,
     qrUrl: s.qr?.fileId ? `/api/qr?v=${s.qr.fileId}` : null,
     mailEnabled,

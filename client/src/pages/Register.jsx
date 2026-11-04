@@ -43,6 +43,7 @@ export default function Register() {
     email: user?.email || "",
   }));
   const [donation, setDonation] = useState("");
+  const [payMode, setPayMode] = useState("upi");
   const [file, setFile] = useState(null);
   const [agreed, setAgreed] = useState(false);
   const [errors, setErrors] = useState({});
@@ -128,6 +129,7 @@ export default function Register() {
     const data = new FormData();
     Object.entries(cleanDetails(form)).forEach(([k, v]) => data.append(k, v));
     data.append("donation", String(cleanDonation(donation)));
+    data.append("payMode", payMode);
     data.append("receipt", file);
 
     setBanner("");
@@ -209,7 +211,7 @@ export default function Register() {
                     agreed={agreed}
                     setAgreed={(v) => { setAgreed(v); if (errors.agree) setErrors(({ agree, ...r }) => r); }}
                     errors={errors}
-                    upi={<UpiProof donation={donation} setDonation={(v) => { setDonation(v); if (errors.donation) setErrors(({ donation, ...r }) => r); }} file={file} pickFile={pickFile} clearFile={() => setFile(null)} errors={errors} disabled={submitting} />}
+                    upi={<UpiProof donation={donation} setDonation={(v) => { setDonation(v); if (errors.donation) setErrors(({ donation, ...r }) => r); }} payMode={payMode} setPayMode={setPayMode} file={file} pickFile={pickFile} clearFile={() => setFile(null)} errors={errors} disabled={submitting} />}
                   />
                 )}
               </div>
@@ -576,16 +578,18 @@ function ReviewStep({ d, goTo, locked, agreed, setAgreed, errors, upi }) {
   );
 }
 
-// Optional Sahay Shulk, then pay fee + Sahay Shulk by UPI QR and upload the screenshot.
-function UpiProof({ donation, setDonation, file, pickFile, clearFile, errors, disabled }) {
+// Optional Sahay Shulk, then pay fee + Sahay Shulk by UPI QR or bank transfer and upload the screenshot.
+function UpiProof({ donation, setDonation, payMode, setPayMode, file, pickFile, clearFile, errors, disabled }) {
   const amount = cleanDonation(donation);
   const error = errors.donation || validateDonation(amount);
   return (
     <>
       <SahayShulk value={donation} onChange={setDonation} error={error} disabled={disabled} />
-      <PaymentPanel donation={error ? 0 : amount} />
+      <PaymentPanel donation={error ? 0 : amount} mode={payMode} setMode={setPayMode} disabled={disabled} />
       <Field label="Upload the payment screenshot" required error={errors.receipt}
-        hint="Screenshot of the successful payment, showing the amount. It is compressed automatically before upload.">
+        hint={payMode === "bank"
+          ? "Screenshot of the successful bank transfer, showing the amount and transaction reference. It is compressed automatically before upload."
+          : "Screenshot of the successful payment, showing the amount. It is compressed automatically before upload."}>
         <FilePicker file={file} onPick={pickFile} onClear={clearFile} disabled={disabled} />
       </Field>
     </>
@@ -596,7 +600,7 @@ function SahayShulk({ value, onChange, error, disabled }) {
   const amount = cleanDonation(value);
   return (
     <Field id="donation" label="Sahay Shulk (helping fund)" optional error={error}
-      sub={`Add a contribution on top of the ${rupees(FEE)} Bhojan Pass fee. It is paid in the same UPI payment.`}
+      sub={`Add a contribution on top of the ${rupees(FEE)} Bhojan Pass fee. It is paid in the same payment.`}
       hint={amount ? `You will pay ${rupees(FEE + amount)}: ${rupees(FEE)} Bhojan Pass fee + ${rupees(amount)} Sahay Shulk.` : "Leave blank to pay only the Bhojan Pass fee."}>
       <div className="mb-3 flex flex-wrap gap-2">
         {SAHAY_PRESETS.map((p) => {

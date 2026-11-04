@@ -1,4 +1,4 @@
-import { EVENT, FEE, UPI, designationText, rupees, universityText } from "../../../shared/constants.js";
+import { EVENT, FEE, PAY_MODES, UPI, bankOf, designationText, rupees, universityText } from "../../../shared/constants.js";
 import { pngPdf } from "./certificate.js";
 
 // Fee receipt, sent with the Bhojan Pass once admins have verified the payment. Drawn as SVG and rendered by sharp
@@ -61,7 +61,7 @@ export function amountInWords(amount) {
   return `Rupees ${parts.join(" ")} Only`;
 }
 
-export function receiptSvg(r, { payeeName, upiId } = {}) {
+export function receiptSvg(r, { payeeName, upiId, bank } = {}) {
   const donation = r.donation || 0;
   const total = r.amount || FEE + donation;
   const issued = r.pass?.issuedAt || r.reviewedAt || new Date();
@@ -81,10 +81,12 @@ export function receiptSvg(r, { payeeName, upiId } = {}) {
   const items = [[`Bhojan Pass fee – ${EVENT.titleEn}`, FEE]];
   if (donation) items.push(["Sahay Shulk (helping fund)", donation]);
 
+  const byBank = r.payMode === "bank" && bank;
   const payment = [
-    ["Payment mode", "UPI"],
-    ["Paid to", payeeName || UPI.payee],
-    ["UPI ID", upiId],
+    ["Payment mode", PAY_MODES[r.payMode] || PAY_MODES.upi],
+    ...(byBank
+      ? [["Paid to", bank.accountName], ["Bank", `${bank.bankName}, ${bank.bankBranch}`], ["A/c no. / IFSC", `${bank.accountNo} / ${bank.ifsc}`]]
+      : [["Paid to", payeeName || UPI.payee], ["UPI ID", upiId]]),
     ["Payment submitted", istDate(r.createdAt || issued)],
     ["UPI reference (UTR)", r.utr],
     ["Status", "Payment verified"],
@@ -158,4 +160,4 @@ export async function receiptPdf(r, payee) {
 export const receiptFilename = (r) => `${r.regNo}-fee-receipt.pdf`;
 
 // Payee details for the receipt, from Payment & settings.
-export const payeeOf = (settings) => ({ payeeName: settings?.payeeName || UPI.payee, upiId: settings?.upiId || UPI.id });
+export const payeeOf = (settings) => ({ payeeName: settings?.payeeName || UPI.payee, upiId: settings?.upiId || UPI.id, bank: bankOf(settings) });

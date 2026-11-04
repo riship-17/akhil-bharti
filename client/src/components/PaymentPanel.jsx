@@ -9,10 +9,10 @@ export function upiLink(c, amount = c?.fee) {
   return `upi://pay?${p.toString().replace(/\+/g, "%20")}`;
 }
 
-// UPI payment details on the last step of the form: a QR code for the organiser's UPI ID with the total
+// Payment details on the last step of the form. UPI: a QR code for the organiser's UPI ID with the total
 // (fee + Sahay Shulk) pre-filled, or the QR image uploaded in the admin panel, plus a pay button that opens
-// the UPI app on phones.
-export default function PaymentPanel({ donation = 0 }) {
+// the UPI app on phones. Bank transfer: the organiser's account details to pay by NEFT / IMPS / RTGS.
+export default function PaymentPanel({ donation = 0, mode = "upi", setMode, disabled }) {
   const c = useConfig();
   const [generated, setGenerated] = useState("");
   const [copied, setCopied] = useState("");
@@ -26,13 +26,17 @@ export default function PaymentPanel({ donation = 0 }) {
   if (!c) return <div className="min-h-72 animate-pulse rounded-xl bg-surface-container" />;
 
   const qrSrc = c.qrUrl || generated;
-  const rows = [
-    ["UPI ID", c.upiId, true],
-    ["A/c name", c.accountName],
-    ["Bank", c.bankName],
-    ["A/c no.", c.accountNo, true],
-    ["IFSC", c.ifsc, true],
-  ].filter((r) => r[1]);
+  const bank = mode === "bank";
+  const rows = (bank
+    ? [
+        ["A/c name", c.accountName, true],
+        ["A/c no.", c.accountNo, true],
+        ["IFSC", c.ifsc, true],
+        ["Bank", c.bankName],
+        ["Branch", c.bankBranch],
+      ]
+    : [["UPI ID", c.upiId, true]]
+  ).filter((r) => r[1]);
 
   const copy = (label, text) => {
     navigator.clipboard?.writeText(text).then(() => {
@@ -41,44 +45,67 @@ export default function PaymentPanel({ donation = 0 }) {
     });
   };
 
+  const modes = [["upi", "Pay by UPI"], ["bank", "Bank transfer"]];
+
   return (
-    <div className="grid gap-5 rounded-xl border-2 border-dashed border-primary/40 bg-[#fff5eb] p-4 sm:grid-cols-[200px_1fr]">
-      <div className="rounded-xl bg-surface-container-lowest p-3 text-center shadow-sm">
-        {qrSrc ? (
-          <img src={qrSrc} alt="UPI QR code for the registration fee" className="aspect-square w-full object-contain" />
-        ) : (
-          <div className="flex aspect-square items-center justify-center rounded-lg border-[1.5px] border-dashed border-outline-variant p-4 text-sm text-on-surface-variant">QR code will be added soon</div>
-        )}
-        <p className="mt-2 text-sm font-semibold">Scan &amp; pay with any UPI app</p>
-        {link && <a className="mt-2 inline-flex rounded-lg px-3 py-1.5 text-sm font-semibold text-primary ring-1 ring-inset ring-primary sm:hidden" href={link}>Pay {rupees(total)} in UPI app</a>}
-      </div>
-      <div>
-        <p className="text-4xl font-bold leading-none text-on-primary-fixed-variant">{rupees(total)}</p>
-        <p className="mt-1.5 text-[15px] text-on-surface-variant">
-          {donation ? `${rupees(c.fee)} Bhojan Pass fee + ${rupees(donation)} Sahay Shulk` : "Bhojan Pass fee"}
-        </p>
-        {rows.length > 0 && (
-          <table className="mt-4 w-full text-[15px]">
-            <tbody>
-              {rows.map(([label, value, canCopy]) => (
-                <tr key={label} className="border-b border-outline-variant/60">
-                  <th className="w-[44%] py-2 pr-3 text-left align-top font-medium text-on-surface-variant">{label}</th>
-                  <td className="break-words py-2 font-semibold">
-                    {value}
-                    {canCopy && (
-                      <button type="button" className="ml-2 rounded px-2 text-xs font-medium text-primary ring-1 ring-inset ring-outline-variant hover:ring-primary" onClick={() => copy(label, value)}>
-                        {copied === label ? "Copied" : "Copy"}
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-        <div className="mt-4 rounded-r-lg border-l-[3px] border-primary bg-primary-fixed/40 px-3.5 py-3 text-[15px]">
-          {c.qrUrl && <p className="mb-1.5 font-semibold">This QR code has no amount filled in: enter {rupees(total)} in your UPI app.</p>}
-          <p>After paying, take a screenshot of the successful payment showing the amount.</p>
+    <div className="rounded-xl border-2 border-dashed border-primary/40 bg-[#fff5eb] p-4">
+      {setMode && (
+        <div role="radiogroup" aria-label="How will you pay?" className="mb-4 grid grid-cols-2 gap-1 rounded-xl bg-surface-container-lowest p-1 shadow-sm">
+          {modes.map(([value, label]) => (
+            <button key={value} type="button" role="radio" aria-checked={mode === value} disabled={disabled} onClick={() => setMode(value)}
+              className={`rounded-lg px-3 py-2.5 text-[15px] font-semibold transition-colors disabled:opacity-40 ${mode === value ? "bg-primary text-on-primary" : "hover:bg-surface-container"}`}>
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+      <div className={bank ? "" : "grid gap-5 sm:grid-cols-[200px_1fr]"}>
+        {!bank && <div className="rounded-xl bg-surface-container-lowest p-3 text-center shadow-sm">
+          {qrSrc ? (
+            <img src={qrSrc} alt="UPI QR code for the registration fee" className="aspect-square w-full object-contain" />
+          ) : (
+            <div className="flex aspect-square items-center justify-center rounded-lg border-[1.5px] border-dashed border-outline-variant p-4 text-sm text-on-surface-variant">QR code will be added soon</div>
+          )}
+          <p className="mt-2 text-sm font-semibold">Scan &amp; pay with any UPI app</p>
+          {link && <a className="mt-2 inline-flex rounded-lg px-3 py-1.5 text-sm font-semibold text-primary ring-1 ring-inset ring-primary sm:hidden" href={link}>Pay {rupees(total)} in UPI app</a>}
+        </div>}
+        <div>
+          <p className="text-4xl font-bold leading-none text-on-primary-fixed-variant">{rupees(total)}</p>
+          <p className="mt-1.5 text-[15px] text-on-surface-variant">
+            {donation ? `${rupees(c.fee)} Bhojan Pass fee + ${rupees(donation)} Sahay Shulk` : "Bhojan Pass fee"}
+          </p>
+          {rows.length > 0 && (
+            <table className="mt-4 w-full text-[15px]">
+              <tbody>
+                {rows.map(([label, value, canCopy]) => (
+                  <tr key={label} className="border-b border-outline-variant/60">
+                    <th className="w-[44%] py-2 pr-3 text-left align-top font-medium text-on-surface-variant">{label}</th>
+                    <td className="break-words py-2 font-semibold">
+                      {value}
+                      {canCopy && (
+                        <button type="button" className="ml-2 rounded px-2 text-xs font-medium text-primary ring-1 ring-inset ring-outline-variant hover:ring-primary" onClick={() => copy(label, value)}>
+                          {copied === label ? "Copied" : "Copy"}
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+          <div className="mt-4 rounded-r-lg border-l-[3px] border-primary bg-primary-fixed/40 px-3.5 py-3 text-[15px]">
+            {bank ? (
+              <>
+                <p className="mb-1.5 font-semibold">Transfer exactly {rupees(total)} by NEFT / IMPS / RTGS from your bank app or branch.</p>
+                <p>After paying, take a screenshot of the successful transfer showing the amount and transaction reference (UTR).</p>
+              </>
+            ) : (
+              <>
+                {c.qrUrl && <p className="mb-1.5 font-semibold">This QR code has no amount filled in: enter {rupees(total)} in your UPI app.</p>}
+                <p>After paying, take a screenshot of the successful payment showing the amount.</p>
+              </>
+            )}
+          </div>
         </div>
       </div>
     </div>
