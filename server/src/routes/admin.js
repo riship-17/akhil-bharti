@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import { Router } from "express";
 import rateLimit from "express-rate-limit";
 import mongoose from "mongoose";
-import { CADRES, FEE, STATUSES, UPI, designationText, labelOf, universityText } from "../../../shared/constants.js";
+import { CADRES, FEE, PAY_MODES, STATUSES, UPI, bankOf, designationText, labelOf, universityText } from "../../../shared/constants.js";
 import { Registration, Settings, User } from "../models.js";
 import { validEmail } from "../../../shared/validate.js";
 import { deleteFile, saveFile, sendFile, uploader } from "../lib/files.js";
@@ -293,6 +293,7 @@ router.get("/export.csv", async (req, res) => {
     ["Residential Address", (r) => r.residentialAddress],
     ["Bhojan Pass Fee", () => FEE],
     ["Sahay Shulk", (r) => r.donation || 0],
+    ["Payment mode", (r) => PAY_MODES[r.payMode] || PAY_MODES.upi],
     ["Total Paid", (r) => r.amount],
     ["UTR", (r) => r.utr],
     ["Bhojan Pass emailed", (r) => istTime(r.pass?.emailedAt)],
@@ -315,10 +316,10 @@ router.get("/export.csv", async (req, res) => {
   res.send("﻿" + csv); // BOM so Excel shows Gujarati correctly
 });
 
-const SETTINGS_FIELDS = ["upiId", "payeeName", "accountName", "bankName", "accountNo", "ifsc"];
+const SETTINGS_FIELDS = ["upiId", "payeeName", "accountName", "bankName", "bankBranch", "accountNo", "ifsc"];
 
-// An empty UPI ID / payee falls back to the organiser's PhonePe UPI, as on the public site.
-const withUpiDefaults = (s) => ({ ...s.toObject(), upiId: s.upiId || UPI.id, payeeName: s.payeeName || UPI.payee });
+// Empty UPI / bank fields fall back to the organiser's PhonePe UPI and bank account, as on the public site.
+const withUpiDefaults = (s) => ({ ...s.toObject(), upiId: s.upiId || UPI.id, payeeName: s.payeeName || UPI.payee, ...bankOf(s) });
 
 router.get("/settings", async (req, res) => res.json(withUpiDefaults(await Settings.load())));
 

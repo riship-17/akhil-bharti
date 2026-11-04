@@ -45,6 +45,8 @@ const registrationSchema = new mongoose.Schema(
     // Total paid: the Bhojan Pass fee plus the optional Sahay Shulk (helping fund).
     amount: { type: Number, default: FEE },
     donation: { type: Number, default: 0 },
+    // How the participant paid: "upi" or "bank" (bank transfer). Older registrations have none and were UPI.
+    payMode: { type: String, enum: ["upi", "bank"], default: "upi" },
     // UPI reference (UTR), only on registrations made while the form still asked for it.
     utr: String,
     // Payment screenshot, shrunk before saving (see lib/files.js).
@@ -99,6 +101,7 @@ const settingsSchema = new mongoose.Schema(
     bankName: { type: String, default: "" },
     accountNo: { type: String, default: "" },
     ifsc: { type: String, default: "" },
+    bankBranch: { type: String, default: "" },
     contacts: [{ _id: false, name: String, role: String, phone: String }],
     qr: { fileId: mongoose.Schema.Types.ObjectId, contentType: String },
     certificate: {

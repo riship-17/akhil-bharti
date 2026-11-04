@@ -159,6 +159,7 @@ export default function Detail({ reg: r, call, token, onClose, onChanged }) {
               <div><span>Total paid</span><b>{rupees(r.amount)}</b></div>
               <div><span>Bhojan Pass fee</span><b>{rupees(FEE)}</b></div>
               <div><span>Sahay Shulk</span><b>{rupees(r.donation)}</b></div>
+              <div><span>Paid by</span><b>{r.payMode === "bank" ? "Bank transfer" : "UPI"}</b></div>
               {r.utr && <div><span>UTR / Transaction ID</span><b className="mono">{r.utr}</b></div>}
             </div>
             <a href={receiptUrl} target="_blank" rel="noopener" className="receipt">

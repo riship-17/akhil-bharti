@@ -6,8 +6,9 @@ import { BulkProgress, useBulk } from "./Bulk.jsx";
 const FIELDS = [
   ["upiId", "UPI ID", "The organiser's PhonePe UPI is 9879930825-4@ybl. The site turns this into a QR code with the participant's total (₹500 + any Sahay Shulk) pre-filled, unless you upload a QR image above."],
   ["payeeName", "Payee name (shown in UPI app)", ""],
-  ["accountName", "Account holder name", ""],
+  ["accountName", "Account holder name", "Shown to participants who choose bank transfer (NEFT / IMPS / RTGS) instead of UPI."],
   ["bankName", "Bank name", ""],
+  ["bankBranch", "Branch", ""],
   ["accountNo", "Account number", ""],
   ["ifsc", "IFSC code", ""],
 ];

@@ -1,13 +1,34 @@
 export const FEE = 500;
 
 // Optional Sahay Shulk (helping fund) a participant can add on top of the Bhojan Pass fee, in the same UPI payment.
-// UPI caps a single payment at ₹1,00,000, so fee + Sahay Shulk must stay within that.
+// UPI caps a single payment at ₹1,00,000, so fee + Sahay Shulk must stay within that (bank transfers too, to keep it simple).
 export const MAX_DONATION = 100000 - FEE;
 
 export const rupees = (n) => "₹" + Number(n || 0).toLocaleString("en-IN");
 
 // The organiser's PhonePe UPI (decoded from their QR code). Admins can change it in Payment & settings.
 export const UPI = { id: "9879930825-4@ybl", payee: "AKHIL BHARTIY RASHTRIY SHAIKSHIK MAHASANGH GUJARAT" };
+
+// The organiser's bank account, for participants who pay by bank transfer (NEFT / IMPS / RTGS) instead of UPI.
+// Admins can change it in Payment & settings.
+export const BANK = {
+  accountName: "Akhil Bhartiy Rashtriy Shaikshik Mahasangh Gujarat",
+  bankName: "Rajkot Nagarik Sahakari Bank Ltd",
+  branch: "Shapar Branch",
+  accountNo: "068110100000014",
+  ifsc: "RNSB0000001",
+};
+
+// Bank details from Payment & settings; an empty field falls back to the organiser's account above.
+export const bankOf = (s) => ({
+  accountName: s?.accountName || BANK.accountName,
+  bankName: s?.bankName || BANK.bankName,
+  bankBranch: s?.bankBranch || BANK.branch,
+  accountNo: s?.accountNo || BANK.accountNo,
+  ifsc: s?.ifsc || BANK.ifsc,
+});
+
+export const PAY_MODES = { upi: "UPI", bank: "Bank transfer" };
 
 export const EVENT = {
   motto: "Education in the interest of the nation, the teacher in the interest of education, society in the interest of the teacher",
