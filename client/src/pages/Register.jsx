@@ -3,13 +3,14 @@ import { Link } from "react-router-dom";
 import { CADRES, DESIGNATIONS, DISTRICTS, EVENT, FEE, UNIVERSITIES, labelOf, rupees, universityText } from "../../../shared/constants.js";
 import {
   DETAIL_FIELDS, MAX_PDF_BYTES, MAX_RECEIPT_BYTES, RECEIPT_TYPES,
-  cleanDetails, cleanDonation, validateDetails, validateDonation,
+  cleanDetails, cleanDonation, cleanUtr, validateDetails, validateDonation, validateUtr,
 } from "../../../shared/validate.js";
 import { store, upload } from "../api.js";
 import { useAuth } from "../auth.js";
 import { useConfig } from "../config.js";
 import { shrinkImage } from "../image.js";
 import PaymentPanel from "../components/PaymentPanel.jsx";
+import UtrField from "../components/UtrField.jsx";
 import {
   Banner, Field, Icon, inputClass, primaryButton, secondaryButton, telHref, textareaBoxClass,
 } from "../components/ui.jsx";
@@ -44,6 +45,7 @@ export default function Register() {
   }));
   const [donation, setDonation] = useState("");
   const [payMode, setPayMode] = useState("upi");
+  const [utr, setUtr] = useState("");
   const [file, setFile] = useState(null);
   const [agreed, setAgreed] = useState(false);
   const [errors, setErrors] = useState({});
@@ -122,6 +124,8 @@ export default function Register() {
     const errs = {};
     const donationErr = validateDonation(cleanDonation(donation));
     if (donationErr) errs.donation = donationErr;
+    const utrErr = validateUtr(cleanUtr(utr), payMode);
+    if (utrErr) errs.utr = utrErr;
     if (!file) errs.receipt = "Upload the payment screenshot or receipt.";
     if (!agreed) errs.agree = "Please confirm that your details are correct.";
     if (Object.keys(errs).length) return showErrors(errs);
@@ -130,6 +134,7 @@ export default function Register() {
     Object.entries(cleanDetails(form)).forEach(([k, v]) => data.append(k, v));
     data.append("donation", String(cleanDonation(donation)));
     data.append("payMode", payMode);
+    data.append("utr", cleanUtr(utr));
     data.append("receipt", file);
 
     setBanner("");
@@ -211,7 +216,7 @@ export default function Register() {
                     agreed={agreed}
                     setAgreed={(v) => { setAgreed(v); if (errors.agree) setErrors(({ agree, ...r }) => r); }}
                     errors={errors}
-                    upi={<UpiProof donation={donation} setDonation={(v) => { setDonation(v); if (errors.donation) setErrors(({ donation, ...r }) => r); }} payMode={payMode} setPayMode={setPayMode} file={file} pickFile={pickFile} clearFile={() => setFile(null)} errors={errors} disabled={submitting} />}
+                    upi={<UpiProof donation={donation} setDonation={(v) => { setDonation(v); if (errors.donation) setErrors(({ donation, ...r }) => r); }} payMode={payMode} setPayMode={setPayMode} utr={utr} setUtr={(v) => { setUtr(v); if (errors.utr) setErrors(({ utr, ...r }) => r); }} file={file} pickFile={pickFile} clearFile={() => setFile(null)} errors={errors} disabled={submitting} />}
                   />
                 )}
               </div>
@@ -578,14 +583,15 @@ function ReviewStep({ d, goTo, locked, agreed, setAgreed, errors, upi }) {
   );
 }
 
-// Optional Sahay Shulk, then pay fee + Sahay Shulk by UPI QR or bank transfer and upload the screenshot.
-function UpiProof({ donation, setDonation, payMode, setPayMode, file, pickFile, clearFile, errors, disabled }) {
+// Optional Sahay Shulk, then pay fee + Sahay Shulk by UPI QR or bank transfer, enter the UTR and upload the screenshot.
+function UpiProof({ donation, setDonation, payMode, setPayMode, utr, setUtr, file, pickFile, clearFile, errors, disabled }) {
   const amount = cleanDonation(donation);
   const error = errors.donation || validateDonation(amount);
   return (
     <>
       <SahayShulk value={donation} onChange={setDonation} error={error} disabled={disabled} />
       <PaymentPanel donation={error ? 0 : amount} mode={payMode} setMode={setPayMode} disabled={disabled} />
+      <UtrField value={utr} onChange={setUtr} payMode={payMode} error={errors.utr} disabled={disabled} />
       <Field label="Upload the payment screenshot" required error={errors.receipt}
         hint={payMode === "bank"
           ? "Screenshot of the successful bank transfer, showing the amount and transaction reference. It is compressed automatically before upload."
@@ -726,6 +732,7 @@ function BadgePreview({ form, contacts }) {
 
 function Success({ result, contacts }) {
   const [copied, setCopied] = useState(false);
+  const confirmed = result?.status === "verified";
   const d = result?.details || {};
   const district = DISTRICTS.find((x) => x.value === d.district);
 
@@ -741,14 +748,18 @@ function Success({ result, contacts }) {
       <section className="border-b border-outline-variant/40 bg-gradient-to-b from-[#fcecd8] via-[#fdf2e4] to-surface px-4 pb-12 pt-8 text-center sm:rounded-b-3xl">
         <div className="mx-auto flex h-24 w-24 items-center justify-center rounded-full border-4 border-white bg-primary-fixed/60 shadow-md">
           <div className="flex h-16 w-16 items-center justify-center rounded-full bg-primary text-white shadow-sm">
-            <Icon name="hourglass_top" className="text-[40px]" />
+            <Icon name={confirmed ? "check" : "hourglass_top"} className="text-[40px]" />
           </div>
         </div>
         <div className="mt-4 space-y-1">
           <h1 className="text-[23px] font-bold leading-tight tracking-tight text-on-primary-fixed-variant">
-            Registration Received
+            {confirmed ? "Registration Confirmed" : "Registration Received"}
           </h1>
-          <p className="px-1 pt-1 text-[15px] text-on-surface-variant">The organising team will verify your payment, then send your Bhojan Pass by email. It will also appear under “My registration”.</p>
+          <p className="px-1 pt-1 text-[15px] text-on-surface-variant">
+            {confirmed
+              ? "We found your payment, so your seat is confirmed. Your Bhojan Pass is being emailed to you and is under “My registration”."
+              : "Your payment is confirmed when its UTR appears in our bank statement (usually within a day). Your Bhojan Pass is then emailed to you automatically and appears under “My registration”."}
+          </p>
         </div>
       </section>
 
@@ -756,9 +767,15 @@ function Success({ result, contacts }) {
         <div className="relative z-10 rounded-xl border border-outline-variant bg-white p-4 shadow-md">
           <div className="flex items-center justify-between gap-2 border-b border-outline-variant/80 pb-3">
             <span className="text-[15px] font-semibold leading-tight">Receipt &amp; Participant Details</span>
-            <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-medium text-amber-800">
-              <Icon name="schedule" className="text-[14px]" />PENDING
-            </span>
+            {confirmed ? (
+              <span className="inline-flex items-center gap-1 rounded-full border border-tertiary/20 bg-[#e5f5ec] px-2.5 py-1 text-[11px] font-medium text-tertiary">
+                <Icon name="check_circle" className="text-[14px]" />CONFIRMED
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-medium text-amber-800">
+                <Icon name="schedule" className="text-[14px]" />PENDING
+              </span>
+            )}
           </div>
 
           <div className="divide-y divide-outline-variant/60 pt-1">
@@ -781,6 +798,7 @@ function Success({ result, contacts }) {
             {result?.donation > 0 && (
               <Row label="Sahay Shulk (helping fund)"><span className="text-[15px] font-bold">{rupees(result.donation)}</span></Row>
             )}
+            {result?.utr && <Row label="UTR"><span className="font-mono text-[15px] font-bold">{result.utr}</span></Row>}
             <div className="-mx-4 mt-1 flex items-center justify-between rounded-b-xl border-t border-outline-variant/70 bg-surface/50 px-4 pb-1 pt-3">
               <span className="text-[15px] font-semibold leading-tight text-on-primary-fixed-variant">Total paid</span>
               <span className="text-[18px] font-bold text-on-primary-fixed-variant">{rupees(result?.amount ?? FEE)}</span>

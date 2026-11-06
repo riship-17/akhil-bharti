@@ -62,7 +62,19 @@ export function validateDonation(n) {
   return null;
 }
 
-export const RECEIPT_TYPES = ["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif", "application/pdf"];
+// UTR (the payment's reference number), compared with the UTR column of the PhonePe statement.
+// UPI and IMPS: 12 digits. NEFT: 16 letters / digits. RTGS: 22. Spaces and dashes are dropped.
+export const cleanUtr = (v) => str(String(v ?? "")).replace(/[\s-]/g, "").toUpperCase();
+
+export function validateUtr(utr, payMode = "upi") {
+  if (!utr) return payMode === "bank" ? "Enter the UTR / reference number of your transfer." : "Enter the 12-digit UTR of your payment.";
+  if (payMode !== "bank") return /^\d{12}$/.test(utr) ? null : `The UTR has 12 digits (you entered ${utr.length}). Copy it from the payment success screen.`;
+  return /^(\d{12}|[A-Z0-9]{16}|[A-Z0-9]{22})$/.test(utr)
+    ? null
+    : "Enter the UTR as shown in your bank app: 12 digits for IMPS, 16 characters for NEFT, 22 for RTGS.";
+}
+
+export const RECEIPT_TYPES =["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif", "application/pdf"];
 // Largest file accepted from the browser. Images are shrunk before they are stored (see server/src/lib/files.js);
 // PDFs are stored as they are, so they get a much lower limit.
 export const MAX_RECEIPT_BYTES = 10 * 1024 * 1024;

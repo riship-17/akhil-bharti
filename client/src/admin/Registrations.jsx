@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { DISTRICTS, rupees } from "../../../shared/constants.js";
 import { BulkProgress, useBulk } from "./Bulk.jsx";
 import Detail from "./Detail.jsx";
@@ -13,11 +14,14 @@ export const when = (d) =>
   new Date(d).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit", timeZone: "Asia/Kolkata" });
 
 export default function Registrations({ call, token }) {
+  // ?q=ABRSM26-0012 (links from the Payments page) searches for that registration and opens it.
+  const [searchParams] = useSearchParams();
+  const linked = searchParams.get("q") || "";
   const [stats, setStats] = useState(null);
-  const [status, setStatus] = useState("pending");
+  const [status, setStatus] = useState(linked ? "" : "pending");
   const [district, setDistrict] = useState("");
-  const [q, setQ] = useState("");
-  const [query, setQuery] = useState("");
+  const [q, setQ] = useState(linked);
+  const [query, setQuery] = useState(linked);
   const [page, setPage] = useState(1);
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
@@ -43,6 +47,11 @@ export default function Registrations({ call, token }) {
   }, [call, params]);
 
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    const hit = linked && data?.items.find((x) => x.regNo === linked);
+    if (hit) setOpenId(hit._id);
+  }, [linked, data]);
 
   function onChanged(updated, removed) {
     setData((d) => ({
@@ -84,7 +93,7 @@ export default function Registrations({ call, token }) {
           ))}
         </div>
         <div className="filters">
-          <input type="search" placeholder="Search name, mobile, reg no…" value={q} onChange={(e) => setQ(e.target.value)} />
+          <input type="search" placeholder="Search name, mobile, reg no, UTR…" value={q} onChange={(e) => setQ(e.target.value)} />
           <select value={district} onChange={(e) => { setDistrict(e.target.value); setPage(1); }}>
             <option value="">All districts</option>
             {DISTRICTS.map((d) => <option key={d.value} value={d.value}>{d.en}</option>)}
@@ -104,6 +113,7 @@ export default function Registrations({ call, token }) {
               <th>District</th>
               <th>Mobile</th>
               <th>Amount</th>
+              <th>Statement</th>
               <th>Submitted</th>
               <th>Status</th>
               <th>Bhojan Pass</th>
@@ -122,6 +132,13 @@ export default function Registrations({ call, token }) {
                 <td className="nowrap">
                   <b>{rupees(r.amount)}</b>
                   {r.donation > 0 && <span className="sub-line">incl. {rupees(r.donation)} Sahay Shulk</span>}
+                </td>
+                <td className="nowrap small">
+                  {r.received?.foundAt
+                    ? r.received.amount === r.amount ? "✓ Found" : <span className="danger-text">{rupees(r.received.amount)} received</span>
+                    : r.status !== "pending" ? ""
+                    : r.utr ? <span className="muted">Not found yet</span>
+                    : <span className="danger-text">No UTR</span>}
                 </td>
                 <td className="nowrap">{when(r.createdAt)}</td>
                 <td><span className={`chip ${r.status}`}>{r.status}</span></td>

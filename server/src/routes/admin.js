@@ -2,9 +2,11 @@ import crypto from "node:crypto";
 import { Router } from "express";
 import rateLimit from "express-rate-limit";
 import mongoose from "mongoose";
-import { CADRES, FEE, PAY_MODES, STATUSES, UPI, bankOf, designationText, labelOf, universityText } from "../../../shared/constants.js";
-import { Registration, Settings, User } from "../models.js";
-import { validEmail } from "../../../shared/validate.js";
+import {
+  CADRES, FEE, MAX_DONATION, PAY_MODES, STATUSES, UPI, bankOf, designationText, labelOf, rupees, universityText,
+} from "../../../shared/constants.js";
+import { Payment, Registration, Settings, User } from "../models.js";
+import { cleanUtr, validEmail, validateUtr } from "../../../shared/validate.js";
 import { deleteFile, saveFile, sendFile, uploader } from "../lib/files.js";
 import { mailEnabled, notify, sendCertificate, sendPass } from "../lib/mail.js";
 import { bulkStatus, ensurePassToken, queueBulk, stopBulk } from "../lib/bulk.js";
@@ -12,6 +14,10 @@ import { certificateFilename, certificatePdf } from "../lib/certificate.js";
 import { newPassToken } from "../lib/pass.js";
 import { payeeOf, receiptFilename, receiptPdf } from "../lib/receipt.js";
 import { requireAdmin, signToken } from "../lib/auth.js";
+import { xlsx } from "../lib/xlsx.js";
+import {
+  COLUMNS, matchAll, matchRegistration, readStatement, releasePayment, savePayments, suggestionsFor, waitingFilter,
+} from "../lib/statement.js";
 
 const router = Router();
 const { ADMIN_PASSWORD } = process.env;
@@ -111,19 +117,55 @@ router.get("/registrations/:id/receipt", async (req, res) => {
 router.patch("/registrations/:id", async (req, res) => {
   const r = await findReg(req, res);
   if (!r) return;
-  const { status, adminNote } = req.body || {};
+  const { status, adminNote, amount } = req.body || {};
   if (status !== undefined && !STATUSES.includes(status)) return res.status(400).json({ error: "Invalid status." });
+  // Verifying with the amount the statement shows, when it differs from what the participant entered.
+  if (amount !== undefined) {
+    if (status !== "verified" || !Number.isInteger(amount) || amount < FEE || amount > FEE + MAX_DONATION) {
+      return res.status(400).json({ error: `Enter the amount received, at least ${rupees(FEE)}.` });
+    }
+    r.amount = amount;
+    r.donation = amount - FEE;
+  }
 
   const changed = status && status !== r.status;
   if (status) r.status = status;
   if (adminNote !== undefined) r.adminNote = String(adminNote).slice(0, 500);
   if (changed) r.reviewedAt = status === "pending" ? undefined : new Date();
   if (r.status === "verified" && !r.pass?.token) r.set("pass.token", newPassToken());
+  if (changed && status === "rejected") await releasePayment(r);
   await r.save();
 
-  // Verifying doesn't email anything: the Bhojan Pass is sent separately (one by one or as a broadcast).
-  const emailed = changed && status === "rejected" ? await notify("rejected", r) : false;
-  res.json({ registration: await Registration.findById(r._id), emailed });
+  // Verifying sends the Bhojan Pass straight away; rejecting tells the participant why.
+  let emailed = false, error;
+  if (changed && status === "verified") ({ sent: emailed, error } = await sendPass(r, originOf(req)));
+  if (changed && status === "rejected") emailed = await notify("rejected", r);
+  res.json({ registration: await Registration.findById(r._id), emailed, error });
+});
+
+// Set or correct the UTR (e.g. read from the screenshot, or a typo), then look for it in the uploaded statements.
+router.put("/registrations/:id/utr", async (req, res) => {
+  const r = await findReg(req, res);
+  if (!r) return;
+  if (r.status !== "pending") return res.status(400).json({ error: "Only a pending registration's UTR can be changed." });
+  const utr = cleanUtr(req.body?.utr);
+  const invalid = validateUtr(utr, r.payMode);
+  if (invalid) return res.status(400).json({ error: invalid });
+  const other = await Registration.findOne({ utr, _id: { $ne: r._id }, status: { $ne: "rejected" } });
+  if (other) return res.status(409).json({ error: `This UTR is already used by registration ${other.regNo} (${other.fullName}).` });
+
+  if (utr !== r.utr) await releasePayment(r);
+  r.utr = utr;
+  await r.save();
+  const found = await matchRegistration(r);
+  const { sent: emailed, error } = found === "verified" ? await sendPass(r, originOf(req)) : {};
+  res.json({ registration: await Registration.findById(r._id), found, emailed, error });
+});
+
+// Statement credits nobody has claimed that look like this participant's payment.
+router.get("/registrations/:id/suggestions", async (req, res) => {
+  const r = await findReg(req, res);
+  if (r) res.json({ items: r.received?.foundAt ? [] : await suggestionsFor(r) });
 });
 
 // Correct a mistyped email. The participant's account changes too, so they log in with the new email
@@ -198,8 +240,111 @@ router.delete("/registrations/:id", async (req, res) => {
   const r = await findReg(req, res);
   if (!r) return;
   await deleteFile(r.receipt?.fileId);
+  await releasePayment(r);
   await r.deleteOne();
   res.json({ ok: true });
+});
+
+// ---- PhonePe statements: upload, match UTRs to registrations, list and download (see lib/statement.js) ----
+
+const STATEMENT_TYPES = [
+  "text/csv", "application/csv", "text/comma-separated-values", "text/plain", "application/vnd.ms-excel",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "application/octet-stream", "",
+];
+
+// Pending registrations that can't be matched yet: their UTR isn't in any statement, or they have no UTR.
+const notFoundFilter = { $or: [waitingFilter(), { status: "pending", $or: [{ utr: { $exists: false } }, { utr: "" }] }] };
+
+router.post(
+  "/statement",
+  uploader(STATEMENT_TYPES, "Upload the statement downloaded from PhonePe (.csv or .xlsx).").single("statement"),
+  async (req, res) => {
+    if (!req.file) return res.status(400).json({ error: "Choose the PhonePe statement file to upload." });
+    const { credits, debits, unreadable } = readStatement(req.file.buffer);
+    const added = await savePayments(credits);
+    const { verified, differs } = await matchAll();
+    // Bhojan Passes go out by themselves, within the daily email limit.
+    if (verified.length && mailEnabled) await queueBulk("passes", originOf(req));
+    const [unregistered, notFound] = await Promise.all([
+      Payment.countDocuments({ registration: { $exists: false } }),
+      Registration.countDocuments(notFoundFilter),
+    ]);
+    res.json({
+      credits: credits.length, added, debits, unreadable,
+      verified: verified.length,
+      differs: differs.map((r) => ({ _id: r._id, regNo: r.regNo, fullName: r.fullName, amount: r.amount, received: r.received.amount })),
+      unregistered, notFound, mailEnabled,
+    });
+  }
+);
+
+const VIEWS = {
+  matched: { "reg._id": { $exists: true }, $expr: { $eq: ["$amount", "$reg.amount"] } },
+  differs: { "reg._id": { $exists: true }, $expr: { $ne: ["$amount", "$reg.amount"] } },
+  unregistered: { "reg._id": { $exists: false } },
+};
+
+// Statement credits with the registration each one paid for.
+const paymentsWithReg = (match = {}) => [
+  { $lookup: { from: "registrations", localField: "registration", foreignField: "_id", as: "reg" } },
+  { $set: { reg: { $first: "$reg" } } },
+  { $match: match },
+  { $project: { "reg.receipt": 0, "reg.pass": 0, "reg.certificate": 0 } },
+  { $sort: { paidAt: -1, _id: -1 } },
+];
+
+router.get("/payments", async (req, res) => {
+  const limit = 50;
+  const page = Math.max(1, parseInt(req.query.page) || 1);
+  const view = String(req.query.view || "");
+  const term = String(req.query.q || "").trim();
+  const rx = term && new RegExp(escapeRegex(term), "i");
+
+  const counts = Object.fromEntries(await Promise.all([
+    Payment.countDocuments().then((n) => ["all", n]),
+    ...Object.entries(VIEWS).map(([k, m]) => Payment.aggregate([...paymentsWithReg(m), { $count: "n" }]).then((x) => [k, x[0]?.n || 0])),
+    Registration.countDocuments(notFoundFilter).then((n) => ["notFound", n]),
+  ]));
+
+  if (view === "notFound") {
+    const filter = rx ? { $and: [notFoundFilter, { $or: ["regNo", "fullName", "mobile", "utr"].map((f) => ({ [f]: rx })) }] } : notFoundFilter;
+    const [items, total] = await Promise.all([
+      Registration.find(filter, "regNo fullName mobile utr amount payMode createdAt").sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit).lean(),
+      Registration.countDocuments(filter),
+    ]);
+    return res.json({ kind: "registrations", items, total, page, pages: Math.max(1, Math.ceil(total / limit)), counts });
+  }
+
+  const match = { ...(VIEWS[view] || {}) };
+  if (rx) match.$or = ["utr", "details", "txnId", "reg.regNo", "reg.fullName"].map((f) => ({ [f]: rx }));
+  const [{ items, total }] = await Payment.aggregate([
+    ...paymentsWithReg(match),
+    { $facet: { items: [{ $skip: (page - 1) * limit }, { $limit: limit }], total: [{ $count: "n" }] } },
+    { $project: { items: 1, total: { $ifNull: [{ $first: "$total.n" }, 0] } } },
+  ]);
+  res.json({ kind: "payments", items, total, page, pages: Math.max(1, Math.ceil(total / limit)), counts });
+});
+
+const resultOf = (p) =>
+  !p.reg ? "Not registered"
+  : p.reg.amount !== p.amount ? `Amount differs: registered ${rupees(p.reg.amount)}`
+  : p.reg.status === "verified" ? "Verified"
+  : p.reg.status;
+
+// The uploaded statements as one Excel file, in PhonePe's columns, with the matching registration added on the right.
+router.get("/payments/export.xlsx", async (req, res) => {
+  const payments = await Payment.aggregate(paymentsWithReg(VIEWS[req.query.view] || {}));
+  const header = [...COLUMNS.map(([, name]) => name), "Reg No", "Participant", "Mobile", "Registered amount", "Result"];
+  const rows = payments.map((p) => [
+    p.date, p.time, p.details, p.txnId, p.utr, "CREDIT", p.instrument, p.amount,
+    p.reg?.regNo, p.reg?.fullName, p.reg?.mobile, p.reg?.amount, resultOf(p),
+  ]);
+  const stamp = new Date().toISOString().slice(0, 10);
+  res.set({
+    "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "Content-Disposition": `attachment; filename="abrsm-payments-${stamp}.xlsx"`,
+  });
+  res.send(xlsx("Payments", [header, ...rows], [14, 10, 42, 26, 15, 16, 28, 10, 15, 32, 12, 18, 30]));
 });
 
 // ---- Bulk emails (Bhojan Pass broadcast, certificates), sent in daily phases: see lib/bulk.js ----
@@ -272,6 +417,23 @@ router.post("/certificates/stop", async (req, res) => {
 
 const istTime = (d) => (d ? new Date(d).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }) : "");
 
+function sendCsv(res, name, cols, rows) {
+  const cell = (v) => {
+    let s = v == null ? "" : String(v);
+    if (/^[=+\-@]/.test(s)) s = "'" + s; // stop spreadsheet formula injection
+    return `"${s.replace(/"/g, '""')}"`;
+  };
+  const csv = [cols.map((c) => cell(c[0])), ...rows.map((r) => cols.map((c) => cell(c[1](r))))]
+    .map((line) => line.join(","))
+    .join("\r\n");
+  const stamp = new Date().toISOString().slice(0, 10);
+  res.set({
+    "Content-Type": "text/csv; charset=utf-8",
+    "Content-Disposition": `attachment; filename="${name}-${stamp}.csv"`,
+  });
+  res.send("\uFEFF" + csv); // BOM so Excel shows Gujarati correctly
+}
+
 router.get("/export.csv", async (req, res) => {
   const rows = await Registration.find(buildFilter(req.query)).sort({ createdAt: 1 }).lean();
   const cols = [
@@ -296,24 +458,12 @@ router.get("/export.csv", async (req, res) => {
     ["Payment mode", (r) => PAY_MODES[r.payMode] || PAY_MODES.upi],
     ["Total Paid", (r) => r.amount],
     ["UTR", (r) => r.utr],
+    ["Received (statement)", (r) => r.received?.amount],
     ["Bhojan Pass emailed", (r) => istTime(r.pass?.emailedAt)],
     ["Certificate emailed", (r) => istTime(r.certificate?.emailedAt)],
     ["Admin Note", (r) => r.adminNote],
   ];
-  const cell = (v) => {
-    let s = v == null ? "" : String(v);
-    if (/^[=+\-@]/.test(s)) s = "'" + s; // stop spreadsheet formula injection
-    return `"${s.replace(/"/g, '""')}"`;
-  };
-  const csv = [cols.map((c) => cell(c[0])), ...rows.map((r) => cols.map((c) => cell(c[1](r))))]
-    .map((line) => line.join(","))
-    .join("\r\n");
-  const stamp = new Date().toISOString().slice(0, 10);
-  res.set({
-    "Content-Type": "text/csv; charset=utf-8",
-    "Content-Disposition": `attachment; filename="abrsm-registrations-${stamp}.csv"`,
-  });
-  res.send("﻿" + csv); // BOM so Excel shows Gujarati correctly
+  sendCsv(res, "abrsm-registrations", cols, rows);
 });
 
 const SETTINGS_FIELDS = ["upiId", "payeeName", "accountName", "bankName", "bankBranch", "accountNo", "ifsc"];

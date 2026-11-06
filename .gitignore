@@ -2,3 +2,7 @@ node_modules
 client/dist
 .env
 .DS_Store
+
+# Bank / PhonePe statements hold participants' names and UTRs: never commit them.
+PhonePe_Statement*
+*.xlsx

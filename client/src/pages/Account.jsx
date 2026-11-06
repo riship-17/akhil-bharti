@@ -1,12 +1,15 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { rupees } from "../../../shared/constants.js";
+import { cleanUtr, validateUtr } from "../../../shared/validate.js";
+import { api } from "../api.js";
 import { useAuth } from "../auth.js";
 import { useConfig } from "../config.js";
 import { Icon, primaryButton, secondaryButton, telHref } from "../components/ui.jsx";
+import UtrField from "../components/UtrField.jsx";
 
 const LABELS = {
-  pending: ["Under verification", "We have received your registration. The organising team will verify your payment, then send your Bhojan Pass.", "schedule", "border-amber-200 bg-amber-50 text-amber-800"],
+  pending: ["Under verification", "We have received your registration. Your payment is confirmed when its UTR appears in our bank statement (usually within a day), and your Bhojan Pass is then emailed to you automatically.", "schedule", "border-amber-200 bg-amber-50 text-amber-800"],
   verified: ["Confirmed", "Your payment is verified and your seat is confirmed.", "check_circle", "border-tertiary/20 bg-[#e5f5ec] text-tertiary"],
   rejected: ["Payment not verified", "We could not verify your payment. Please contact the organising team, or register again with the correct payment details.", "cancel", "border-error/20 bg-error-container/50 text-error"],
 };
@@ -15,7 +18,7 @@ const when = (d) => new Date(d).toLocaleString("en-IN", { day: "numeric", month:
 
 // "My registration": the logged-in participant's status, Bhojan Pass, fee receipt and certificate.
 export default function Account() {
-  const { me, user, refresh, logout } = useAuth();
+  const { me, user, token, refresh, logout } = useAuth();
   const config = useConfig();
   const contact = config?.contacts?.[0];
   const r = me?.registration;
@@ -75,6 +78,16 @@ export default function Account() {
               <p className="text-[15px] text-on-surface-variant">{label[1]}</p>
               <p className="text-sm text-on-surface-variant">Submitted {when(r.submittedAt)} · {rupees(r.amount)} paid{r.donation > 0 && ` (incl. ${rupees(r.donation)} Sahay Shulk)`}</p>
 
+              {r.utr && !r.canEditUtr && <p className="text-sm text-on-surface-variant">UTR: <b className="font-mono">{r.utr}</b></p>}
+              {r.canEditUtr && <UtrEditor r={r} token={token} onSaved={refresh} />}
+
+              {r.receivedAmount !== undefined && (
+                <p className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-[15px] text-amber-900">
+                  <Icon name="info" className="mt-0.5 text-[20px]" />
+                  <span>We found your payment of {rupees(r.receivedAmount)}, but your registration is for {rupees(r.amount)}. The organising team will check it and contact you if needed.</span>
+                </p>
+              )}
+
               {r.note && (
                 <p className="rounded-r-lg border-l-[3px] border-primary bg-primary-fixed/40 px-3.5 py-3 text-[15px]">
                   <b>Note from organisers:</b> {r.note}
@@ -123,5 +136,54 @@ export default function Account() {
         </div>
       </div>
     </section>
+  );
+}
+
+// Add the UTR (registrations made before the form asked for it) or correct a typo, until the payment is found.
+function UtrEditor({ r, token, onSaved }) {
+  const [editing, setEditing] = useState(!r.utr);
+  const [value, setValue] = useState(r.utr);
+  const [error, setError] = useState("");
+  const [msg, setMsg] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function save(e) {
+    e.preventDefault();
+    const utr = cleanUtr(value);
+    const invalid = validateUtr(utr, r.payMode);
+    if (invalid) return setError(invalid);
+    setBusy(true);
+    setError("");
+    try {
+      const { found } = await api("/me/utr", { method: "PUT", body: { utr }, token });
+      setMsg(found === "verified" ? "Payment found: your registration is confirmed." : "UTR saved. We will match it with our next bank statement.");
+      setEditing(false);
+      await onSaved();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!editing) {
+    return (
+      <div className="text-sm text-on-surface-variant">
+        {msg && <p className="mb-1 font-semibold text-tertiary">{msg}</p>}
+        UTR: <b className="font-mono">{r.utr}</b>{" "}
+        <button type="button" className="font-semibold text-primary underline" onClick={() => { setMsg(""); setEditing(true); }}>Change</button>
+      </div>
+    );
+  }
+
+  return (
+    <form onSubmit={save} noValidate className="space-y-3 rounded-xl bg-primary-fixed/25 p-4">
+      {!r.utr && <p className="text-[15px] font-semibold">Add the UTR of your payment so we can confirm it automatically.</p>}
+      <UtrField id="account-utr" value={value} onChange={(v) => { setValue(v); setError(""); }} payMode={r.payMode} error={error} disabled={busy} />
+      <div className="flex gap-3">
+        <button className={`${primaryButton} min-h-12 flex-1`} disabled={busy}>{busy ? "Saving…" : "Save UTR"}</button>
+        {r.utr && <button type="button" className={`${secondaryButton} min-h-12`} onClick={() => { setValue(r.utr); setError(""); setEditing(false); }} disabled={busy}>Cancel</button>}
+      </div>
+    </form>
   );
 }

@@ -24,9 +24,9 @@ Needs MongoDB running locally (`brew services start mongodb-community`) or a Mon
 ## How registration works
 
 1. **Account.** Participants create an account (name, email, mobile, password) and log in. Passwords are hashed with scrypt. "Forgot password" emails a reset link that works for 30 minutes (needs email, see below); resetting signs out every other session.
-2. **Form + UPI payment.** The last step of the form shows a QR code for the organiser's PhonePe UPI `9879930825-4@ybl` with ₹500 pre-filled (on phones there is also a *Pay in UPI app* button). The participant pays, types the UTR and uploads the payment screenshot. One active registration per account; the registration always uses the account's email.
-3. **Verification.** Organisers compare the UTR and screenshot with the bank statement and verify or reject it.
-4. **Bhojan Pass.** Organisers then send the pass, one at a time or as a broadcast (below). It is emailed and also appears under **My registration** (`/account`), where participants can see their status at any time.
+2. **Form + UPI payment.** The last step of the form shows a QR code for the organiser's PhonePe UPI `9879930825-4@ybl` with ₹500 pre-filled (on phones there is also a *Pay in UPI app* button). The participant pays, enters the UTR (12 digits for UPI; checked as they type, and no two registrations can share one) and uploads the payment screenshot. One active registration per account; the registration always uses the account's email.
+3. **Verification.** Organisers upload the PhonePe statement on the **Payments** page. Every pending registration whose UTR is in it with the right amount is verified automatically (see *Verifying payments* below). If the payment is already in an uploaded statement when someone registers, they are confirmed straight away.
+4. **Bhojan Pass.** Verified participants are emailed their pass automatically, within the daily email limit. It also appears under **My registration** (`/account`), where participants can see their status and add or correct their UTR until the payment is found.
 
 Registrations made before accounts existed are linked to an account automatically when someone signs up with the same email and mobile number.
 
@@ -43,15 +43,22 @@ Go to **Payment & settings** and:
 
 ## Verifying payments
 
-**Registrations** opens on the *Pending* tab. Click a row, compare the UTR and screenshot with your bank / UPI statement, then:
-- **Verify payment** — marks it confirmed. Nothing is emailed yet; send the Bhojan Pass next.
-- **Reject** — requires a note; the participant is emailed and sees the note under *My registration*.
+Once or twice a day, download the statement from PhonePe (*History → Download statement*) and upload it as it is (.csv or .xlsx; PhonePe's ".csv" is really an Excel file) on **Payments** (`server/src/lib/statement.js`). Uploading overlapping dates is fine: payments are kept by UTR, so ones already uploaded are skipped. For each pending registration whose UTR is in the statement:
+- **Same amount** → verified, and the Bhojan Pass is emailed automatically.
+- **Different amount** → stays pending, flagged in red. Open it: **Verify with ₹X** accepts the amount received (the Sahay Shulk becomes X − ₹500), or reject it with a note.
+
+The Payments tabs show what is left to check: *Paid, not registered* (money with a UTR no registration has: usually a typo) and *Registered, UTR not found*. Opening a registration whose UTR isn't found lists **possible payments** from the statement (a UTR one or two characters off, or the same name and amount) with **Use this UTR**. You can also add or edit the UTR by hand (e.g. from the screenshot). **Download Excel** gives the uploaded statements in PhonePe's columns with the matching registration added on the right.
+
+Bank transfers (NEFT / IMPS / RTGS) go straight to the bank account, so they are not in the PhonePe statement: check those against the bank statement and verify by hand. In **Registrations**, click a row, then:
+- **Verify payment** — marks it confirmed and emails the Bhojan Pass.
+- **Reject** — requires a note; the participant is emailed and sees the note under *My registration*. Its UTR is freed, so they can register again with it.
 
 **Export CSV** downloads the current list (opens correctly in Excel, including Gujarati).
 
 ## Sending the Bhojan Pass
 
 Two ways, both from **Registrations**:
+- **Automatically:** when a registration is verified (by a statement upload or by hand). After a statement upload the passes go out as a broadcast, within the daily limit.
 - **One at a time:** open a verified registration and click **Send Bhojan Pass** (or **Email pass again**).
 - **Broadcast:** the *Bhojan Pass* panel at the top shows how many verified participants have been emailed. **Broadcast to N** emails everyone verified who hasn't received it yet, within the daily email limit (see *Daily email limit* below); you can leave the page while it runs. Failed sends are listed and retried by broadcasting again, which never re-sends to people who already got theirs.
 

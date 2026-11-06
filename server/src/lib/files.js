@@ -13,13 +13,13 @@ function badFile(field, message) {
   return err;
 }
 
-export function uploader(types = RECEIPT_TYPES) {
+export function uploader(types = RECEIPT_TYPES, message = "Upload an image (JPG / PNG) or a PDF file.") {
   return multer({
     storage: multer.memoryStorage(),
     limits: { fileSize: MAX_RECEIPT_BYTES, files: 1, fields: 30 },
     fileFilter: (req, file, cb) => {
       if (types.includes(file.mimetype)) return cb(null, true);
-      cb(badFile(file.fieldname, "Upload an image (JPG / PNG) or a PDF file."));
+      cb(badFile(file.fieldname, message));
     },
   });
 }
