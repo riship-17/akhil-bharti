@@ -97,12 +97,12 @@ export default function PaymentPanel({ donation = 0, mode = "upi", setMode, disa
             {bank ? (
               <>
                 <p className="mb-1.5 font-semibold">Transfer exactly {rupees(total)} by NEFT / IMPS / RTGS from your bank app or branch.</p>
-                <p>After paying, take a screenshot of the successful transfer showing the amount and transaction reference (UTR).</p>
+                <p>After paying, enter the transfer's UTR / reference number below and upload a screenshot of the successful transfer.</p>
               </>
             ) : (
               <>
                 {c.qrUrl && <p className="mb-1.5 font-semibold">This QR code has no amount filled in: enter {rupees(total)} in your UPI app.</p>}
-                <p>After paying, take a screenshot of the successful payment showing the amount.</p>
+                <p>After paying, enter the 12-digit UTR from the payment success screen below and upload a screenshot of it.</p>
               </>
             )}
           </div>

@@ -8,13 +8,23 @@ export default function Detail({ reg: r, call, token, onClose, onChanged }) {
   const [msg, setMsg] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [email, setEmail] = useState(null); // null when not editing
+  const [utr, setUtr] = useState(null); // null when not editing
+  const [suggestions, setSuggestions] = useState([]);
 
   useEffect(() => {
     setNote(r.adminNote || "");
     setMsg("");
     setConfirmDelete(false);
     setEmail(null);
+    setUtr(null);
   }, [r._id]);
+
+  // Statement payments that look like this participant's, when their UTR hasn't been found.
+  const lookForPayment = r.status === "pending" && !r.received?.foundAt;
+  useEffect(() => {
+    setSuggestions([]);
+    if (lookForPayment) call(`/admin/registrations/${r._id}/suggestions`).then((d) => setSuggestions(d.items)).catch(() => {});
+  }, [r._id, r.utr, lookForPayment, call]);
 
   useEffect(() => {
     const onKey = (e) => e.key === "Escape" && onClose();
@@ -22,7 +32,7 @@ export default function Detail({ reg: r, call, token, onClose, onChanged }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  async function setStatus(status) {
+  async function setStatus(status, amount) {
     if (status === "rejected" && !note.trim()) {
       setMsg("Add a short note explaining why (e.g. “Payment not found in bank statement”) before rejecting.");
       return;
@@ -30,9 +40,13 @@ export default function Detail({ reg: r, call, token, onClose, onChanged }) {
     setBusy(status);
     setMsg("");
     try {
-      const { registration, emailed } = await call(`/admin/registrations/${r._id}`, { method: "PATCH", body: { status, adminNote: note } });
+      const { registration, emailed, error } = await call(`/admin/registrations/${r._id}`, { method: "PATCH", body: { status, adminNote: note, amount } });
       onChanged(registration);
-      if (status === "verified") setMsg("Payment verified. Now send the Bhojan Pass (or include them in a broadcast from the Registrations page).");
+      if (status === "verified") {
+        setMsg(emailed
+          ? `Payment verified and the Bhojan Pass emailed to ${registration.email}.`
+          : `Payment verified. The pass is in the participant's account, but the email was not sent: ${error || "unknown error"}`);
+      }
       else if (status === "rejected") setMsg(emailed ? "Rejected and the participant was emailed." : "Rejected. The email could not be sent, so let the participant know by phone.");
       else setMsg("Moved back to pending.");
     } catch (err) {
@@ -66,6 +80,27 @@ export default function Detail({ reg: r, call, token, onClose, onChanged }) {
       setMsg(
         `Email changed to ${registration.email}. The participant now logs in with it.` +
           (registration.pass?.emailedAt ? " Click “Email pass again” to send the Bhojan Pass there." : "")
+      );
+    } catch (err) {
+      setMsg(err.message);
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function saveUtr(value) {
+    setBusy("utr");
+    setMsg("");
+    try {
+      const { registration, found, emailed, error } = await call(`/admin/registrations/${r._id}/utr`, { method: "PUT", body: { utr: value } });
+      onChanged(registration);
+      setUtr(null);
+      setMsg(
+        found === "verified"
+          ? `UTR found in the statement: payment verified${emailed ? " and the Bhojan Pass emailed." : `. The pass email was not sent: ${error || "unknown error"}`}`
+          : found === "differs"
+            ? `UTR found, but ${rupees(registration.received.amount)} was received instead of ${rupees(registration.amount)}. Check it below.`
+            : "UTR saved. It isn't in the uploaded statements yet: it will be matched when the next statement is uploaded."
       );
     } catch (err) {
       setMsg(err.message);
@@ -111,6 +146,8 @@ export default function Detail({ reg: r, call, token, onClose, onChanged }) {
   const receiptUrl = `/api/admin/registrations/${r._id}/receipt?t=${encodeURIComponent(token)}`;
   const feeReceiptUrl = `/api/admin/registrations/${r._id}/fee-receipt?t=${encodeURIComponent(token)}`;
   const isPdf = r.receipt?.contentType === "application/pdf";
+  const received = r.received?.foundAt ? r.received : null;
+  const differs = received && received.amount !== r.amount;
 
   const rows = [
     [
@@ -160,12 +197,61 @@ export default function Detail({ reg: r, call, token, onClose, onChanged }) {
               <div><span>Bhojan Pass fee</span><b>{rupees(FEE)}</b></div>
               <div><span>Sahay Shulk</span><b>{rupees(r.donation)}</b></div>
               <div><span>Paid by</span><b>{r.payMode === "bank" ? "Bank transfer" : "UPI"}</b></div>
-              {r.utr && <div><span>UTR / Transaction ID</span><b className="mono">{r.utr}</b></div>}
+              <div>
+                <span>UTR / Transaction ID</span>
+                {utr === null ? (
+                  <b className="mono">
+                    {r.utr || <span className="muted">none</span>}{" "}
+                    {r.status === "pending" && <button className="link small" onClick={() => setUtr(r.utr || "")} disabled={!!busy}>{r.utr ? "Edit" : "Add"}</button>}
+                  </b>
+                ) : (
+                  <form onSubmit={(e) => { e.preventDefault(); saveUtr(utr); }}>
+                    <input className="mono" value={utr} onChange={(e) => setUtr(e.target.value)} required autoFocus aria-label="UTR" placeholder="12-digit UTR" />
+                    <button className="link" disabled={!!busy || !utr.trim()}>{busy === "utr" ? "Saving…" : "Save"}</button>
+                    {" · "}
+                    <button type="button" className="link" onClick={() => setUtr(null)} disabled={!!busy}>Cancel</button>
+                  </form>
+                )}
+              </div>
             </div>
+            <div className={`statement-check${received ? (differs ? " differs" : " found") : ""}`}>
+              {received ? (
+                <>
+                  <b>{differs ? `In the PhonePe statement, but ${rupees(received.amount)} was received` : `Found in the PhonePe statement: ${rupees(received.amount)} received`}</b>
+                  <span>from {received.payer || "unknown"}{received.paidAt && ` on ${when(received.paidAt)}`}</span>
+                  {differs && r.status === "pending" && (
+                    received.amount >= FEE
+                      ? <span>If the amount is fine (e.g. a different Sahay Shulk), verify with {rupees(received.amount)}. Otherwise reject it with a note.</span>
+                      : <span>That is less than the {rupees(FEE)} fee: reject it with a note, e.g. “Amount received was {rupees(received.amount)} instead of {rupees(r.amount)}”.</span>
+                  )}
+                </>
+              ) : r.status === "pending" ? (
+                <>
+                  <b>{r.utr ? "Not found in the uploaded statements yet" : "No UTR: add it from the screenshot to match it with the statement"}</b>
+                  {r.payMode === "bank" && <span>Bank transfers (NEFT / IMPS / RTGS) don't appear in the PhonePe statement: check the bank statement and verify by hand.</span>}
+                </>
+              ) : (
+                <b>Not matched with a statement (verified by hand)</b>
+              )}
+            </div>
+            {suggestions.length > 0 && (
+              <div className="suggestions">
+                <b>Possible payments in the statement</b>
+                {suggestions.map((p) => (
+                  <div key={p._id}>
+                    <span>
+                      <b>{rupees(p.amount)}</b> · {p.details} · {p.date} {p.time}
+                      <span className="sub-line mono">UTR {p.utr} — {p.reasons.join(", ")}</span>
+                    </span>
+                    <button className="btn ghost small" onClick={() => saveUtr(p.utr)} disabled={!!busy}>Use this UTR</button>
+                  </div>
+                ))}
+              </div>
+            )}
             <a href={receiptUrl} target="_blank" rel="noopener" className="receipt">
               {isPdf ? <div className="file-icon big">PDF<small>Open receipt</small></div> : <img src={receiptUrl} alt="Payment screenshot" />}
             </a>
-            <p className="muted small">Check that the screenshot shows the total paid, and find the payment in your bank / UPI statement before verifying. Click the screenshot to open it full size.</p>
+            <p className="muted small">Registrations are verified automatically when their UTR and amount match an uploaded PhonePe statement (Payments page). Click the screenshot to open it full size.</p>
           </section>
 
           {r.status === "verified" && (
@@ -212,7 +298,12 @@ export default function Detail({ reg: r, call, token, onClose, onChanged }) {
         </div>
 
         <div className="drawer-actions">
-          {r.status !== "verified" && (
+          {r.status !== "verified" && differs && received.amount >= FEE && (
+            <button className="btn green" onClick={() => setStatus("verified", received.amount)} disabled={!!busy}>
+              {busy === "verified" ? "Verifying…" : `Verify with ${rupees(received.amount)}`}
+            </button>
+          )}
+          {r.status !== "verified" && !differs && (
             <button className="btn green" onClick={() => setStatus("verified")} disabled={!!busy}>{busy === "verified" ? "Verifying…" : "Verify payment"}</button>
           )}
           {r.status === "verified" && !r.pass?.emailedAt && (

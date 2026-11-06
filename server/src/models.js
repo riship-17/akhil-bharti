@@ -47,8 +47,12 @@ const registrationSchema = new mongoose.Schema(
     donation: { type: Number, default: 0 },
     // How the participant paid: "upi" or "bank" (bank transfer). Older registrations have none and were UPI.
     payMode: { type: String, enum: ["upi", "bank"], default: "upi" },
-    // UPI reference (UTR), only on registrations made while the form still asked for it.
+    // UTR (payment reference) the participant entered, matched against uploaded PhonePe statements.
+    // Registrations made while the form didn't ask for it have none until the participant or an admin adds it.
     utr: String,
+    // The credit with that UTR, once it turns up in an uploaded statement (see lib/statement.js). When its amount is
+    // the registration's total the registration is verified automatically; otherwise it waits for an admin.
+    received: { amount: Number, payer: String, paidAt: Date, foundAt: Date },
     // Payment screenshot, shrunk before saving (see lib/files.js).
     receipt: {
       fileId: { type: mongoose.Schema.Types.ObjectId, required: true },
@@ -80,6 +84,26 @@ const registrationSchema = new mongoose.Schema(
 );
 
 export const Registration = mongoose.model("Registration", registrationSchema);
+
+// One credit from an uploaded PhonePe statement. Uploading overlapping statements is fine: rows are kept by UTR.
+const paymentSchema = new mongoose.Schema(
+  {
+    utr: { type: String, required: true, unique: true },
+    txnId: String,
+    paidAt: Date,
+    // As written in the statement, so the export can show them the same way.
+    date: String,
+    time: String,
+    details: String,
+    instrument: String,
+    amount: { type: Number, required: true },
+    // The registration this payment was matched to (one payment pays for one registration).
+    registration: { type: mongoose.Schema.Types.ObjectId, ref: "Registration", index: true },
+  },
+  { timestamps: true }
+);
+
+export const Payment = mongoose.model("Payment", paymentSchema);
 
 const Counter = mongoose.model(
   "Counter",

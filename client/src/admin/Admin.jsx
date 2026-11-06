@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react";
 import { Link, NavLink, Route, Routes } from "react-router-dom";
 import { api, store } from "../api.js";
+import Payments from "./Payments.jsx";
 import Registrations from "./Registrations.jsx";
 import Settings from "./Settings.jsx";
 
@@ -39,6 +40,7 @@ export default function Admin() {
           </Link>
           <nav className="admin-nav">
             <NavLink to="/admin" end>Registrations</NavLink>
+            <NavLink to="/admin/payments">Payments</NavLink>
             <NavLink to="/admin/settings">Payment &amp; settings</NavLink>
             <a href="/" target="_blank" rel="noopener">View site</a>
             <button type="button" className="link" onClick={logout}>Log out</button>
@@ -47,6 +49,7 @@ export default function Admin() {
       </header>
       <Routes>
         <Route index element={<Registrations call={call} token={token} />} />
+        <Route path="payments" element={<Payments call={call} token={token} />} />
         <Route path="settings" element={<Settings call={call} token={token} />} />
       </Routes>
     </div>

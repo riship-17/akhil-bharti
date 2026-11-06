@@ -2,11 +2,13 @@ import { Router } from "express";
 import rateLimit from "express-rate-limit";
 import { FEE } from "../../../shared/constants.js";
 import {
-  cleanAccount, cleanDetails, cleanDonation, validateAccount, validateDetails, validateDonation, validatePassword,
+  cleanAccount, cleanDetails, cleanDonation, cleanUtr, validateAccount, validateDetails, validateDonation, validatePassword,
+  validateUtr,
 } from "../../../shared/validate.js";
 import { Registration, Settings, User, nextRegNo } from "../models.js";
 import { deleteFile, saveFile, shrinkReceipt, uploader } from "../lib/files.js";
-import { mailEnabled, notify } from "../lib/mail.js";
+import { mailEnabled, notify, sendPass } from "../lib/mail.js";
+import { matchRegistration, releasePayment } from "../lib/statement.js";
 import {
   checkPassword, hashPassword, newResetToken, publicUser, requireUser, sha256, userToken,
 } from "../lib/auth.js";
@@ -87,9 +89,23 @@ async function registrationOf(user) {
   );
 }
 
+// The UTR is used by only one active registration.
+async function utrTaken(utr, reg) {
+  return Registration.exists({ utr, status: { $ne: "rejected" }, ...(reg && { _id: { $ne: reg._id } }) });
+}
+
+// Right after a UTR is entered: when the payment is already in an uploaded statement with the right amount, the
+// registration is verified and the Bhojan Pass emailed without waiting for the next statement.
+async function matchNow(reg, req) {
+  const found = await matchRegistration(reg);
+  if (found === "verified") sendPass(reg, originOf(req)).catch((err) => console.error("[pass]", err));
+  return found;
+}
+
 router.get("/me", requireUser, async (req, res) => {
   const [r, settings] = await Promise.all([registrationOf(req.user), Settings.load()]);
   const confirmed = r?.status === "verified";
+  const found = r?.received?.foundAt;
   res.json({
     user: publicUser(req.user),
     registration: r && {
@@ -98,6 +114,12 @@ router.get("/me", requireUser, async (req, res) => {
       status: r.status,
       amount: r.amount,
       donation: r.donation || 0,
+      payMode: r.payMode,
+      utr: r.utr || "",
+      // The UTR can be fixed until the payment is found in a statement.
+      canEditUtr: r.status === "pending" && !found,
+      // Found, but with a different amount: the organisers check it.
+      receivedAmount: found && r.status === "pending" && r.received.amount !== r.amount ? r.received.amount : undefined,
       submittedAt: r.createdAt,
       note: r.status === "rejected" ? r.adminNote || "" : "",
       passToken: confirmed && r.pass?.issuedAt ? r.pass.token : undefined,
@@ -116,9 +138,14 @@ router.post("/register", requireUser, limit(15, 20), uploader().single("receipt"
   // The registration always uses the account's email, so emails and the account stay linked.
   const details = { ...cleanDetails(req.body), email: user.email };
   const donation = cleanDonation(req.body?.donation);
+  const payMode = req.body?.payMode === "bank" ? "bank" : "upi";
+  const utr = cleanUtr(req.body?.utr);
   const fields = validateDetails(details);
   const donationError = validateDonation(donation);
   if (donationError) fields.donation = donationError;
+  const utrError = validateUtr(utr, payMode);
+  if (utrError) fields.utr = utrError;
+  else if (await utrTaken(utr)) fields.utr = "This UTR is already used by another registration. Check the number, or contact the organising team if you paid for more than one person.";
   if (!req.file) fields.receipt = "Upload the payment screenshot.";
   if (Object.keys(fields).length) return res.status(400).json({ error: "Please correct the highlighted fields.", fields });
 
@@ -144,7 +171,8 @@ router.post("/register", requireUser, limit(15, 20), uploader().single("receipt"
       user: user._id,
       amount: FEE + donation,
       donation,
-      payMode: req.body?.payMode === "bank" ? "bank" : "upi",
+      payMode,
+      utr,
       regNo: await nextRegNo(),
       receipt: { fileId, filename: receipt.originalname, contentType: receipt.mimetype, size: receipt.size },
     });
@@ -153,9 +181,25 @@ router.post("/register", requireUser, limit(15, 20), uploader().single("receipt"
     throw err;
   }
 
+  await matchNow(reg, req);
   res.status(201).json({
-    regNo: reg.regNo, fullName: reg.fullName, email: reg.email, status: reg.status, amount: reg.amount, donation: reg.donation,
+    regNo: reg.regNo, fullName: reg.fullName, email: reg.email, status: reg.status, amount: reg.amount, donation: reg.donation, utr: reg.utr,
   });
+});
+
+// Add or correct the UTR of a registration that is still waiting for its payment to be found.
+router.put("/me/utr", requireUser, limit(15, 20), async (req, res) => {
+  const reg = await registrationOf(req.user);
+  if (!reg || reg.status !== "pending" || reg.received?.foundAt) {
+    return res.status(400).json({ error: "The UTR can't be changed any more. Contact the organising team if it is wrong." });
+  }
+  const utr = cleanUtr(req.body?.utr);
+  const invalid = validateUtr(utr, reg.payMode) || ((await utrTaken(utr, reg)) && "This UTR is already used by another registration.");
+  if (invalid) return res.status(400).json({ error: invalid, fields: { utr: invalid } });
+  if (utr !== reg.utr) await releasePayment(reg);
+  reg.utr = utr;
+  await reg.save();
+  res.json({ status: reg.status, found: await matchNow(reg, req) });
 });
 
 export default router;
