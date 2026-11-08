@@ -263,6 +263,7 @@ input::placeholder, textarea::placeholder { color: #a39a92; }
 .pay-check p { margin: 10px 0 0; }
 .pay-facts form { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .pay-facts form input { width: 200px; padding: 5px 9px; }
+.pay-facts form input[type="number"] { width: 110px; }
 .statement-check { border-left: 3px solid var(--amber); background: var(--amber-soft); padding: 8px 12px; margin-bottom: 12px; font-size: 14.5px; }
 .statement-check.found { border-color: var(--green); background: var(--green-soft); }
 .statement-check.differs { border-color: var(--red); background: var(--red-soft); }

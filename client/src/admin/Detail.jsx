@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { CADRES, FEE, designationText, labelOf, rupees, universityText } from "../../../shared/constants.js";
+import { CADRES, FEE, MAX_DONATION, designationText, labelOf, rupees, universityText } from "../../../shared/constants.js";
 import { when } from "./Registrations.jsx";
 
 export default function Detail({ reg: r, call, token, onClose, onChanged }) {
@@ -9,6 +9,7 @@ export default function Detail({ reg: r, call, token, onClose, onChanged }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [email, setEmail] = useState(null); // null when not editing
   const [utr, setUtr] = useState(null); // null when not editing
+  const [amount, setAmount] = useState(null); // null when not editing
   const [suggestions, setSuggestions] = useState([]);
 
   useEffect(() => {
@@ -17,6 +18,7 @@ export default function Detail({ reg: r, call, token, onClose, onChanged }) {
     setConfirmDelete(false);
     setEmail(null);
     setUtr(null);
+    setAmount(null);
   }, [r._id]);
 
   // Statement payments that look like this participant's, when their UTR hasn't been found.
@@ -109,6 +111,27 @@ export default function Detail({ reg: r, call, token, onClose, onChanged }) {
     }
   }
 
+  async function saveAmount(e) {
+    e.preventDefault();
+    setBusy("amount");
+    setMsg("");
+    try {
+      const { registration, verified, emailed, error } = await call(`/admin/registrations/${r._id}/amount`, { method: "PUT", body: { amount: Number(amount) } });
+      onChanged(registration);
+      setAmount(null);
+      setMsg(
+        verified
+          ? `Amount changed to ${rupees(registration.amount)}: it matches the statement, so the payment is verified${emailed ? " and the Bhojan Pass emailed." : `. The pass email was not sent: ${error || "unknown error"}`}`
+          : `Amount changed to ${rupees(registration.amount)} (Sahay Shulk ${rupees(registration.donation)}).` +
+              (registration.pass?.emailedAt ? " The fee receipt now shows the new amount." : "")
+      );
+    } catch (err) {
+      setMsg(err.message);
+    } finally {
+      setBusy("");
+    }
+  }
+
   async function remove() {
     setBusy("delete");
     try {
@@ -193,7 +216,23 @@ export default function Detail({ reg: r, call, token, onClose, onChanged }) {
         <div className="drawer-body">
           <section className="pay-check">
             <div className="pay-facts">
-              <div><span>Total paid</span><b>{rupees(r.amount)}</b></div>
+              <div>
+                <span>Total paid</span>
+                {amount === null ? (
+                  <b>
+                    {rupees(r.amount)}{" "}
+                    <button className="link small" onClick={() => setAmount(String(received?.amount ?? r.amount))} disabled={!!busy}>Edit</button>
+                  </b>
+                ) : (
+                  <form onSubmit={saveAmount}>
+                    <input type="number" inputMode="numeric" min={FEE} max={FEE + MAX_DONATION} step={1} value={amount}
+                      onChange={(e) => setAmount(e.target.value)} required autoFocus aria-label="Amount paid" />
+                    <button className="link" disabled={!!busy || !amount}>{busy === "amount" ? "Saving…" : "Save"}</button>
+                    {" · "}
+                    <button type="button" className="link" onClick={() => setAmount(null)} disabled={!!busy}>Cancel</button>
+                  </form>
+                )}
+              </div>
               <div><span>Bhojan Pass fee</span><b>{rupees(FEE)}</b></div>
               <div><span>Sahay Shulk</span><b>{rupees(r.donation)}</b></div>
               <div><span>Paid by</span><b>{r.payMode === "bank" ? "Bank transfer" : "UPI"}</b></div>

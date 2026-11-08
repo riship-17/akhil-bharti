@@ -162,6 +162,30 @@ router.put("/registrations/:id/utr", async (req, res) => {
   res.json({ registration: await Registration.findById(r._id), found, emailed, error });
 });
 
+// Correct the amount when a participant entered one amount and paid another: the Sahay Shulk is what is above the fee,
+// and the fee receipt shows the new amount. A pending registration whose statement payment now matches is verified and
+// emailed its Bhojan Pass, as when verifying by hand.
+router.put("/registrations/:id/amount", async (req, res) => {
+  const r = await findReg(req, res);
+  if (!r) return;
+  const amount = Number(req.body?.amount);
+  if (!Number.isInteger(amount) || amount < FEE || amount > FEE + MAX_DONATION) {
+    return res.status(400).json({ error: `Enter the amount paid in whole rupees, at least ${rupees(FEE)}.` });
+  }
+  r.amount = amount;
+  r.donation = amount - FEE;
+  const verify = r.status === "pending" && r.received?.foundAt && r.received.amount === amount;
+  if (verify) {
+    r.status = "verified";
+    r.reviewedAt = new Date();
+    if (!r.pass?.token) r.set("pass.token", newPassToken());
+  }
+  await r.save();
+  let emailed = false, error;
+  if (verify) ({ sent: emailed, error } = mailEnabled ? await sendPass(r, originOf(req)) : { sent: false, error: NO_MAIL });
+  res.json({ registration: await Registration.findById(r._id), verified: Boolean(verify), emailed, error });
+});
+
 // Statement credits nobody has claimed that look like this participant's payment.
 router.get("/registrations/:id/suggestions", async (req, res) => {
   const r = await findReg(req, res);
