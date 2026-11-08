@@ -52,7 +52,8 @@ const registrationSchema = new mongoose.Schema(
     utr: String,
     // The credit with that UTR, once it turns up in an uploaded statement (see lib/statement.js). When its amount is
     // the registration's total the registration is verified automatically; otherwise it waits for an admin.
-    received: { amount: Number, payer: String, paidAt: Date, foundAt: Date },
+    // byName: matched by payer name and amount, for a registration verified by hand before the form asked for a UTR.
+    received: { amount: Number, payer: String, paidAt: Date, foundAt: Date, byName: Boolean },
     // Payment screenshot, shrunk before saving (see lib/files.js).
     receipt: {
       fileId: { type: mongoose.Schema.Types.ObjectId, required: true },

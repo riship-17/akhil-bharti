@@ -219,6 +219,12 @@ input::placeholder, textarea::placeholder { color: #a39a92; }
 .filters { display: flex; gap: 8px; flex-wrap: wrap; }
 .filters input { width: 260px !important; padding: 7px 11px !important; font-size: 14.5px !important; }
 .filters select { width: auto; padding: 7px 11px; font-size: 14.5px; }
+.ranges { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-top: 20px; }
+.ranges button { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 4px 12px; font-size: 14px; color: var(--ink); cursor: pointer; }
+.ranges button:hover { border-color: var(--accent); }
+.ranges button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.ranges input[type="date"] { width: auto; padding: 4px 8px; font-size: 14px; }
+.ranges .muted { margin: 0 2px; }
 
 .table-wrap { background: var(--card); border: 1px solid var(--line); overflow-x: auto; }
 .reg-table { width: 100%; border-collapse: collapse; font-size: 14.5px; }
