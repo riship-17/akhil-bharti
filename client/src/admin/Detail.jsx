@@ -217,8 +217,8 @@ export default function Detail({ reg: r, call, token, onClose, onChanged }) {
             <div className={`statement-check${received ? (differs ? " differs" : " found") : ""}`}>
               {received ? (
                 <>
-                  <b>{differs ? `In the PhonePe statement, but ${rupees(received.amount)} was received` : `Found in the PhonePe statement: ${rupees(received.amount)} received`}</b>
-                  <span>from {received.payer || "unknown"}{received.paidAt && ` on ${when(received.paidAt)}`}</span>
+                  <b>{differs ? `In the statement, but ${rupees(received.amount)} was received` : `Found in the statement: ${rupees(received.amount)} received`}</b>
+                  <span>from {received.payer || "unknown"}{received.paidAt && ` on ${when(received.paidAt)}`}{received.byName && " (matched by payer name and amount)"}</span>
                   {differs && r.status === "pending" && (
                     received.amount >= FEE
                       ? <span>If the amount is fine (e.g. a different Sahay Shulk), verify with {rupees(received.amount)}. Otherwise reject it with a note.</span>
@@ -251,7 +251,7 @@ export default function Detail({ reg: r, call, token, onClose, onChanged }) {
             <a href={receiptUrl} target="_blank" rel="noopener" className="receipt">
               {isPdf ? <div className="file-icon big">PDF<small>Open receipt</small></div> : <img src={receiptUrl} alt="Payment screenshot" />}
             </a>
-            <p className="muted small">Registrations are verified automatically when their UTR and amount match an uploaded PhonePe statement (Payments page). Click the screenshot to open it full size.</p>
+            <p className="muted small">Registrations are verified automatically when their UTR and amount match an uploaded statement (Payments page). Click the screenshot to open it full size.</p>
           </section>
 
           {r.status === "verified" && (

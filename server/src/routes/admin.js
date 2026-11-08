@@ -245,7 +245,7 @@ router.delete("/registrations/:id", async (req, res) => {
   res.json({ ok: true });
 });
 
-// ---- PhonePe statements: upload, match UTRs to registrations, list and download (see lib/statement.js) ----
+// ---- Payment statements: upload, match UTRs to registrations, list and download (see lib/statement.js) ----
 
 const STATEMENT_TYPES = [
   "text/csv", "application/csv", "text/comma-separated-values", "text/plain", "application/vnd.ms-excel",
@@ -257,12 +257,12 @@ const notFoundFilter = { $or: [waitingFilter(), { status: "pending", $or: [{ utr
 
 router.post(
   "/statement",
-  uploader(STATEMENT_TYPES, "Upload the statement downloaded from PhonePe (.csv or .xlsx).").single("statement"),
+  uploader(STATEMENT_TYPES, "Upload the statement downloaded from PhonePe or the bank (.csv or .xlsx).").single("statement"),
   async (req, res) => {
-    if (!req.file) return res.status(400).json({ error: "Choose the PhonePe statement file to upload." });
+    if (!req.file) return res.status(400).json({ error: "Choose the statement file to upload." });
     const { credits, debits, unreadable } = readStatement(req.file.buffer);
     const added = await savePayments(credits);
-    const { verified, differs } = await matchAll();
+    const { verified, differs, linked, byName } = await matchAll();
     // Bhojan Passes go out by themselves, within the daily email limit.
     if (verified.length && mailEnabled) await queueBulk("passes", originOf(req));
     const [unregistered, notFound] = await Promise.all([
@@ -272,6 +272,7 @@ router.post(
     res.json({
       credits: credits.length, added, debits, unreadable,
       verified: verified.length,
+      linked: linked.length, byName,
       differs: differs.map((r) => ({ _id: r._id, regNo: r.regNo, fullName: r.fullName, amount: r.amount, received: r.received.amount })),
       unregistered, notFound, mailEnabled,
     });
@@ -283,6 +284,14 @@ const VIEWS = {
   differs: { "reg._id": { $exists: true }, $expr: { $ne: ["$amount", "$reg.amount"] } },
   unregistered: { "reg._id": { $exists: false } },
 };
+
+// ?from=2026-11-07&to=2026-11-08 (days in India, both included) → { $gte, $lt } for a date field, or undefined.
+function dateRange({ from, to }) {
+  const day = (v) => (/^\d{4}-\d{2}-\d{2}$/.test(String(v || "")) ? new Date(`${v}T00:00:00+05:30`) : null);
+  const start = day(from), end = day(to);
+  if (!start && !end) return undefined;
+  return { ...(start && { $gte: start }), ...(end && { $lt: new Date(end.getTime() + 864e5) }) };
+}
 
 // Statement credits with the registration each one paid for.
 const paymentsWithReg = (match = {}) => [
@@ -299,41 +308,56 @@ router.get("/payments", async (req, res) => {
   const view = String(req.query.view || "");
   const term = String(req.query.q || "").trim();
   const rx = term && new RegExp(escapeRegex(term), "i");
+  // The date range applies to when the payment was made, and to when a registration was submitted.
+  const range = dateRange(req.query);
+  const inRange = range ? { paidAt: range } : {};
+  const notFound = range ? { $and: [notFoundFilter, { createdAt: range }] } : notFoundFilter;
 
-  const counts = Object.fromEntries(await Promise.all([
-    Payment.countDocuments().then((n) => ["all", n]),
-    ...Object.entries(VIEWS).map(([k, m]) => Payment.aggregate([...paymentsWithReg(m), { $count: "n" }]).then((x) => [k, x[0]?.n || 0])),
-    Registration.countDocuments(notFoundFilter).then((n) => ["notFound", n]),
-  ]));
+  const [counts, days] = await Promise.all([
+    Promise.all([
+      Payment.countDocuments(inRange).then((n) => ["all", n]),
+      ...Object.entries(VIEWS).map(([k, m]) =>
+        Payment.aggregate([{ $match: inRange }, ...paymentsWithReg(m), { $count: "n" }]).then((x) => [k, x[0]?.n || 0])),
+      Registration.countDocuments(notFound).then((n) => ["notFound", n]),
+    ]).then(Object.fromEntries),
+    // The days the uploaded statements have payments on, to see which days are still to be uploaded.
+    Payment.aggregate([
+      { $match: { paidAt: { $exists: true } } },
+      { $group: { _id: { $dateToString: { date: "$paidAt", format: "%Y-%m-%d", timezone: "Asia/Kolkata" } }, n: { $sum: 1 } } },
+      { $sort: { _id: 1 } },
+    ]).then((x) => x.map((d) => ({ day: d._id, n: d.n }))),
+  ]);
 
   if (view === "notFound") {
-    const filter = rx ? { $and: [notFoundFilter, { $or: ["regNo", "fullName", "mobile", "utr"].map((f) => ({ [f]: rx })) }] } : notFoundFilter;
+    const filter = rx ? { $and: [notFound, { $or: ["regNo", "fullName", "mobile", "utr"].map((f) => ({ [f]: rx })) }] } : notFound;
     const [items, total] = await Promise.all([
       Registration.find(filter, "regNo fullName mobile utr amount payMode createdAt").sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit).lean(),
       Registration.countDocuments(filter),
     ]);
-    return res.json({ kind: "registrations", items, total, page, pages: Math.max(1, Math.ceil(total / limit)), counts });
+    return res.json({ kind: "registrations", items, total, page, pages: Math.max(1, Math.ceil(total / limit)), counts, days });
   }
 
   const match = { ...(VIEWS[view] || {}) };
   if (rx) match.$or = ["utr", "details", "txnId", "reg.regNo", "reg.fullName"].map((f) => ({ [f]: rx }));
   const [{ items, total }] = await Payment.aggregate([
+    { $match: inRange },
     ...paymentsWithReg(match),
     { $facet: { items: [{ $skip: (page - 1) * limit }, { $limit: limit }], total: [{ $count: "n" }] } },
     { $project: { items: 1, total: { $ifNull: [{ $first: "$total.n" }, 0] } } },
   ]);
-  res.json({ kind: "payments", items, total, page, pages: Math.max(1, Math.ceil(total / limit)), counts });
+  res.json({ kind: "payments", items, total, page, pages: Math.max(1, Math.ceil(total / limit)), counts, days });
 });
 
 const resultOf = (p) =>
   !p.reg ? "Not registered"
   : p.reg.amount !== p.amount ? `Amount differs: registered ${rupees(p.reg.amount)}`
-  : p.reg.status === "verified" ? "Verified"
+  : p.reg.status === "verified" ? (p.reg.received?.byName ? "Verified (matched by name)" : "Verified")
   : p.reg.status;
 
 // The uploaded statements as one Excel file, in PhonePe's columns, with the matching registration added on the right.
 router.get("/payments/export.xlsx", async (req, res) => {
-  const payments = await Payment.aggregate(paymentsWithReg(VIEWS[req.query.view] || {}));
+  const range = dateRange(req.query);
+  const payments = await Payment.aggregate([{ $match: range ? { paidAt: range } : {} }, ...paymentsWithReg(VIEWS[req.query.view] || {})]);
   const header = [...COLUMNS.map(([, name]) => name), "Reg No", "Participant", "Mobile", "Registered amount", "Result"];
   const rows = payments.map((p) => [
     p.date, p.time, p.details, p.txnId, p.utr, "CREDIT", p.instrument, p.amount,
